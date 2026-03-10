@@ -19,7 +19,7 @@ export function CitationCard({ source, index }: CitationCardProps) {
     >
       <CardHeader className="p-2 pb-0">
         <div className="flex items-start justify-between gap-2">
-          <span className="font-medium leading-tight text-blue-700 dark:text-blue-400">
+          <span className="font-medium leading-tight text-blue-400">
             [{index + 1}] {source.title}
           </span>
           <span className="shrink-0 text-xs text-muted-foreground">{expanded ? "▲" : "▼"}</span>

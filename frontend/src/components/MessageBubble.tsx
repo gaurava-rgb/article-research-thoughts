@@ -93,15 +93,15 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="max-w-[85%] rounded-2xl bg-muted px-4 py-3 text-sm">
+      <div className="max-w-[85%] rounded-2xl bg-zinc-800 px-4 py-3 text-sm text-zinc-100">
         {sections.map((section, i) => {
           if (section.label === "FROM YOUR SOURCES") {
             return (
-              <div key={i} className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/30">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+              <div key={i} className="mb-3 rounded-lg border border-blue-500/40 bg-blue-500/10 p-3">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-blue-400">
                   From Your Sources
                 </p>
-                <div className="prose prose-sm max-w-none dark:prose-invert">
+                <div className="prose prose-sm max-w-none prose-invert text-foreground">
                   <MemoizedMarkdown content={section.text} />
                 </div>
               </div>
@@ -109,18 +109,18 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
           }
           if (section.label === "ANALYSIS") {
             return (
-              <div key={i} className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+              <div key={i} className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-amber-400">
                   Analysis
                 </p>
-                <div className="prose prose-sm max-w-none dark:prose-invert">
+                <div className="prose prose-sm max-w-none prose-invert text-foreground">
                   <MemoizedMarkdown content={section.text} />
                 </div>
               </div>
             );
           }
           return (
-            <div key={i} className="prose prose-sm max-w-none dark:prose-invert">
+            <div key={i} className="prose prose-sm max-w-none prose-invert text-foreground">
               <MemoizedMarkdown content={section.text} />
             </div>
           );
