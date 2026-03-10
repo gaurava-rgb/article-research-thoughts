@@ -59,13 +59,13 @@ async def chat_endpoint(body: ChatRequest) -> dict:
     # 1. Retrieve relevant source chunks
     sources: list[SearchResult] = hybrid_search(body.message, top_k=5)
     sources_for_prompt = "\n\n".join(
-        f"[Source: {s.source_title}]\n{s.content}" for s in sources
+        f"[Source: {s.title}]\n{s.content}" for s in sources
     )
     sources_json = [
         {
-            "title": s.source_title,
-            "url": s.source_url,
-            "author": s.source_author,
+            "title": s.title,
+            "url": s.url,
+            "author": s.author,
             "score": round(s.hybrid_score, 3),
         }
         for s in sources
