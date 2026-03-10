@@ -10,7 +10,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Foundation** - Schema, ingestion pipeline, and retrieval — user can sync Readwise corpus and query it via CLI
+- [x] **Phase 1: Foundation** - Schema, ingestion pipeline, and retrieval — user can sync Readwise corpus and query it via CLI (completed 2026-03-10)
 - [ ] **Phase 2: Chat UI + Memory** - Browser chat interface with conversation history — user can ask questions and continue past sessions
 - [ ] **Phase 3: Clustering + Topic Evolution** - Articles auto-organize into topics that update as new content arrives
 - [ ] **Phase 4: Synthesis Engine** - Narrative answers across multiple sources with source attribution and contradiction detection
@@ -86,7 +86,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/3 | In Progress|  |
+| 1. Foundation | 3/3 | Complete   | 2026-03-10 |
 | 2. Chat UI + Memory | 0/? | Not started | - |
 | 3. Clustering + Topic Evolution | 0/? | Not started | - |
 | 4. Synthesis Engine | 0/? | Not started | - |

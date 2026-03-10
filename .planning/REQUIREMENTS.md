@@ -15,10 +15,10 @@
 
 ### Retrieval
 
-- [ ] **RET-01**: User can search knowledge base semantically (meaning-based, not just keyword matching)
-- [ ] **RET-02**: Search combines vector similarity + full-text keyword search (hybrid search)
-- [ ] **RET-03**: User can filter search by time range ("articles from last 3 months", "before 2025")
-- [ ] **RET-04**: Search results return source metadata (title, author, URL) alongside matched content
+- [x] **RET-01**: User can search knowledge base semantically (meaning-based, not just keyword matching)
+- [x] **RET-02**: Search combines vector similarity + full-text keyword search (hybrid search)
+- [x] **RET-03**: User can filter search by time range ("articles from last 3 months", "before 2025")
+- [x] **RET-04**: Search results return source metadata (title, author, URL) alongside matched content
 
 ### Structuring
 
@@ -104,10 +104,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ING-03 | Phase 1 | Complete |
 | ING-04 | Phase 1 | Complete |
 | ING-05 | Phase 1 | Complete |
-| RET-01 | Phase 1 | Pending |
-| RET-02 | Phase 1 | Pending |
-| RET-03 | Phase 1 | Pending |
-| RET-04 | Phase 1 | Pending |
+| RET-01 | Phase 1 | Complete |
+| RET-02 | Phase 1 | Complete |
+| RET-03 | Phase 1 | Complete |
+| RET-04 | Phase 1 | Complete |
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
