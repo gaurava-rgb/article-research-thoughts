@@ -1,0 +1,36 @@
+# =============================================================================
+# Second Brain — Provider Configuration
+# =============================================================================
+# This is the single file you edit to swap providers or models.
+# No source code changes are needed — the backend reads this at startup.
+#
+# For each field ending in _env, the backend reads the named environment
+# variable. Set these in your shell:
+#   export OPENROUTER_API_KEY="sk-or-..."
+#   export SUPABASE_URL="https://your-project.supabase.co"
+#   export SUPABASE_KEY="eyJ..."
+#   export READWISE_TOKEN="..."
+# =============================================================================
+
+llm:
+  provider: openrouter                      # options: openrouter (future: anthropic, openai)
+  model: anthropic/claude-sonnet-4-5        # OpenRouter model ID — change this to swap models
+  api_key_env: OPENROUTER_API_KEY           # env var name the key is read from
+  base_url: https://openrouter.ai/api/v1
+
+embeddings:
+  provider: openrouter
+  model: openai/text-embedding-3-small      # 1536 dimensions — must match schema vector(1536)
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+database:
+  url_env: SUPABASE_URL                     # env var name for the Supabase project URL
+  key_env: SUPABASE_KEY                     # env var name for the Supabase anon/service key
+
+readwise:
+  token_env: READWISE_TOKEN                 # env var name for the Readwise API token
+
+chunking:
+  target_tokens: 500                        # target size of each chunk in tokens
+  overlap_tokens: 50                        # overlap between consecutive chunks (context window)
