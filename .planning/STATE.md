@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 2
-current_plan: 02-02 complete (2 of N plans in Phase 2)
+current_plan: 02-03 complete (3 of N plans in Phase 2)
 status: in-progress
-stopped_at: Completed 02-02-PLAN.md (Next.js frontend scaffold + streaming chat UI, citation cards, conversation sidebar)
-last_updated: "2026-03-10T20:12:33.880Z"
+stopped_at: Completed 02-03-PLAN.md (IngestionPanel + POST /api/sync endpoint)
+last_updated: "2026-03-10T20:13:19.074Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # State: Second Brain — Personal Knowledge System
@@ -26,12 +26,12 @@ progress:
 
 **Milestone:** 1 (of 1 planned)
 **Current Phase:** 2
-**Current Plan:** 02-02 complete (2 of N plans in Phase 2)
+**Current Plan:** 02-03 complete (3 of N plans in Phase 2)
 **Status:** In progress
 
 ```
-Progress: 5 of 7 plans complete
-[███████░░░] 71% complete
+Progress: 6 of 7 plans complete
+[████████░░] 86% complete
 ```
 
 ---
@@ -83,6 +83,9 @@ Progress: 5 of 7 plans complete
 | SSE format: token events + sources event + [DONE] terminator | Standard SSE pattern for streaming LLM responses with source attribution |
 | Async params pattern for Next.js 15+ dynamic routes | params typed as Promise<{id}> and awaited in async server component — required for Next.js 15+/16 |
 | MemoizedMarkdown wraps react-markdown in React.memo | Prevents re-render thrash during SSE token streaming — each token update would re-render the whole markdown tree without memoization |
+| Sync runs to completion before returning to UI | Thread executor approach gives user real success/error feedback — fire-and-forget would show no result |
+| URL ingestion field is UI-only placeholder in Phase 2 | Backend URL ingestion pipeline deferred to Phase 3; UI element satisfies UI-05 spec at front-end level |
+| fastapi and uvicorn added to pyproject.toml | Were missing despite router.py requiring them; added as Rule 3 auto-fix |
 
 ### Known Constraints
 
@@ -112,11 +115,11 @@ None currently.
 
 ## Session Continuity
 
-**Last session:** 2026-03-10T20:12:33.878Z
+**Last session:** 2026-03-10T20:13:19.072Z
 
-**Stopped at:** Completed 02-02-PLAN.md (Next.js frontend scaffold + streaming chat UI, citation cards, conversation sidebar)
+**Stopped at:** Completed 02-03-PLAN.md (IngestionPanel + POST /api/sync endpoint)
 
-**Next action:** Continue Phase 2 — execute plan 02-03 (ingestion panel UI) or next plan in sequence.
+**Next action:** Continue Phase 2 — execute plan 02-04 (Vercel deployment configuration).
 
 ---
 *State initialized: 2026-03-10 after roadmap creation*
