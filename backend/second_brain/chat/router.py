@@ -169,3 +169,31 @@ def patch_conversation_endpoint(conversation_id: str, body: ConversationPatch):
     from second_brain.chat.conversation import update_title
     update_title(conversation_id, body.title)
     return {"ok": True}
+
+
+@router.post("/sync")
+async def sync_endpoint():
+    """Trigger a Readwise sync from the UI (UI-05).
+
+    Runs sync_readwise() in a thread executor so it doesn't block the event loop.
+    The sync can take 30-120s for large corpora; Vercel Hobby allows 300s.
+
+    Returns:
+        { "status": "complete" | "error", "message": str }
+    """
+    import asyncio
+    import traceback
+
+    async def run_sync():
+        # Lazy import — avoids loading ingestion deps at startup (cold start cost)
+        from second_brain.ingestion.readwise import sync_readwise
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, sync_readwise)
+
+    try:
+        await run_sync()
+        return {"status": "complete", "message": "Readwise sync completed successfully."}
+    except Exception as exc:
+        # Log the full traceback server-side; return a safe message to the client
+        traceback.print_exc()
+        return {"status": "error", "message": f"Sync failed: {exc}"}
