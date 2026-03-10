@@ -35,10 +35,10 @@
 
 ### Chat & Memory
 
-- [ ] **CHAT-01**: User can have multi-turn conversations — follow-up questions reference prior turns in the same session
-- [ ] **CHAT-02**: Past conversations are stored and listed in a sidebar
-- [ ] **CHAT-03**: User can load and continue a past conversation
-- [ ] **CHAT-04**: Cross-session memory — system recalls relevant past conversations when answering new questions ("remember when we discussed X?")
+- [x] **CHAT-01**: User can have multi-turn conversations — follow-up questions reference prior turns in the same session
+- [x] **CHAT-02**: Past conversations are stored and listed in a sidebar
+- [x] **CHAT-03**: User can load and continue a past conversation
+- [x] **CHAT-04**: Cross-session memory — system recalls relevant past conversations when answering new questions ("remember when we discussed X?")
 
 ### Workflows
 
@@ -48,7 +48,7 @@
 
 ### Frontend
 
-- [ ] **UI-01**: Chat interface with message bubbles and markdown rendering
+- [x] **UI-01**: Chat interface with message bubbles and markdown rendering
 - [ ] **UI-02**: Source citations rendered as expandable cards (click to see original article)
 - [ ] **UI-03**: Visual distinction between [FROM SOURCES] and [ANALYSIS] content (different styling)
 - [ ] **UI-04**: Conversation sidebar showing past chats
@@ -111,16 +111,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
-| UI-01 | Phase 2 | Pending |
+| UI-01 | Phase 2 | Complete |
 | UI-02 | Phase 2 | Pending |
 | UI-03 | Phase 2 | Pending |
 | UI-04 | Phase 2 | Pending |
 | UI-05 | Phase 2 | Pending |
 | UI-07 | Phase 2 | Pending |
-| CHAT-01 | Phase 2 | Pending |
-| CHAT-02 | Phase 2 | Pending |
-| CHAT-03 | Phase 2 | Pending |
-| CHAT-04 | Phase 2 | Pending |
+| CHAT-01 | Phase 2 | Complete |
+| CHAT-02 | Phase 2 | Complete |
+| CHAT-03 | Phase 2 | Complete |
+| CHAT-04 | Phase 2 | Complete |
 | STR-01 | Phase 3 | Pending |
 | STR-02 | Phase 3 | Pending |
 | STR-03 | Phase 3 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 2
-current_plan: Not started
-status: planning
-stopped_at: Completed 01-03-PLAN.md (Phase 1 Foundation complete)
-last_updated: "2026-03-10T15:32:49.335Z"
+current_plan: 02-01 complete
+status: in-progress
+stopped_at: Completed 02-01-PLAN.md (Chat backend module, conversation CRUD, SSE streaming)
+last_updated: "2026-03-10T20:04:29.929Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 7
+  completed_plans: 4
 ---
 
 # State: Second Brain — Personal Knowledge System
@@ -26,12 +26,12 @@ progress:
 
 **Milestone:** 1 (of 1 planned)
 **Current Phase:** 2
-**Current Plan:** Not started
-**Status:** Ready to plan
+**Current Plan:** 02-01 complete (1 of N plans in Phase 2)
+**Status:** In progress
 
 ```
-Progress: Phase 1 of 5 COMPLETE
-[██████████] 100% complete (3 of 3 plans in Phase 1)
+Progress: 4 of 7 plans complete
+[██████░░░░] 57% complete
 ```
 
 ---
@@ -41,7 +41,7 @@ Progress: Phase 1 of 5 COMPLETE
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Foundation | Complete (3/3 plans done) | 3 |
-| 2 | Chat UI + Memory | Not started | TBD |
+| 2 | Chat UI + Memory | In progress (1/N plans done) | TBD |
 | 3 | Clustering + Topic Evolution | Not started | TBD |
 | 4 | Synthesis Engine | Not started | TBD |
 | 5 | Proactive Insights + Digests | Not started | TBD |
@@ -78,6 +78,9 @@ Progress: Phase 1 of 5 COMPLETE
 | Lazy imports in CLI sync command | Keeps --help instantaneous; heavy imports only when sync actually runs |
 | Hybrid score = 70% vector + 30% FTS | Vector-heavy because semantic meaning is the primary retrieval signal in a personal knowledge base; weights documented in schema.sql and tunable |
 | Lazy imports in retrieval/search.py | config.py validates env vars at import time; deferring imports inside hybrid_search() consistent with established lazy-import pattern |
+| Module-level import of get_db_client for test patchability | db.py only loads supabase library (no env vars triggered); allows patch("second_brain.chat.conversation.get_db_client") in tests |
+| Lazy wrapper function for get_embedding_provider in memory.py | embeddings.py imports cfg at module level (triggers env var validation); wrapper defers the real import to call time while still being patchable by name |
+| SSE format: token events + sources event + [DONE] terminator | Standard SSE pattern for streaming LLM responses with source attribution |
 
 ### Known Constraints
 
@@ -107,11 +110,11 @@ None currently.
 
 ## Session Continuity
 
-**Last session:** 2026-03-10T15:33:30Z
+**Last session:** 2026-03-10T20:04:00Z
 
-**Stopped at:** Completed 01-03-PLAN.md (Phase 1 Foundation complete)
+**Stopped at:** Completed 02-01-PLAN.md (Chat backend module, conversation CRUD, SSE streaming)
 
-**Next action:** Begin Phase 2 — Chat UI + Memory. Run `/gsd:execute-phase 2` to start.
+**Next action:** Continue Phase 2 — execute plan 02-02 (frontend chat UI or next plan in sequence).
 
 ---
 *State initialized: 2026-03-10 after roadmap creation*
