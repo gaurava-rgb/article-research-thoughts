@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "second-brain"
+version = "0.1.0"
+description = "Personal knowledge system — synthesizes saved articles into a thinking partner"
+requires-python = ">=3.11"
+dependencies = [
+    "supabase",           # Supabase Python client (database + auth)
+    "openai",             # OpenAI-compatible client; works with OpenRouter
+    "pyyaml",             # Parse config.yaml
+    "tiktoken",           # Count tokens for chunking
+    "httpx",              # Async HTTP client (used by supabase and for Readwise API)
+    "typer[all]",         # CLI framework for ingestion and utility commands
+    "rich",               # Pretty terminal output (tables, progress bars)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["second_brain"]
