@@ -1,0 +1,22 @@
+# Environment files
+.env
+.env.local
+frontend/.env.local
+frontend/.env*.local
+
+# Vercel
+.vercel/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Next.js
+frontend/.next/
+frontend/node_modules/
+
+# macOS
+.DS_Store
