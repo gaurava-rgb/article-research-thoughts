@@ -14,7 +14,7 @@
 
 llm:
   provider: openrouter                      # options: openrouter (future: anthropic, openai)
-  model: meta-llama/llama-3.3-70b-instruct:free  # OpenRouter model ID — change this to swap models
+  model: google/gemma-3-27b-it:free  # OpenRouter model ID — change this to swap models
   api_key_env: OPENROUTER_API_KEY           # env var name the key is read from
   base_url: https://openrouter.ai/api/v1
 
