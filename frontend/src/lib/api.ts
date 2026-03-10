@@ -60,42 +60,12 @@ export async function sendMessage(
     body: JSON.stringify({ conversation_id: conversationId, message }),
   });
 
-  if (!res.ok || !res.body) {
+  if (!res.ok) {
     throw new Error(`Chat request failed: ${res.status}`);
   }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n\n");
-    // Keep the last (potentially incomplete) chunk in the buffer
-    buffer = lines.pop() ?? "";
-
-    for (const chunk of lines) {
-      const line = chunk.trim();
-      if (!line.startsWith("data: ")) continue;
-      const raw = line.slice(6);
-      if (raw === "[DONE]") {
-        onDone();
-        return;
-      }
-      try {
-        const event = JSON.parse(raw) as { type: string; content?: string; sources?: Source[] };
-        if (event.type === "token" && event.content) {
-          onToken(event.content);
-        } else if (event.type === "sources" && event.sources) {
-          onSources(event.sources);
-        }
-      } catch {
-        // Malformed SSE line — skip silently
-      }
-    }
-  }
+  const data = await res.json() as { content: string; sources: Source[] };
+  onToken(data.content);
+  onSources(data.sources ?? []);
   onDone();
 }

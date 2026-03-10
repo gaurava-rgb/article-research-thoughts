@@ -14,12 +14,7 @@ SSE format:
 """
 from __future__ import annotations
 
-import asyncio
-import json
-from typing import AsyncGenerator
-
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -48,8 +43,8 @@ class ConversationPatch(BaseModel):
 
 
 @router.post("/chat")
-async def chat_endpoint(body: ChatRequest) -> StreamingResponse:
-    """Stream an LLM response with SSE, injecting hybrid search context and memory."""
+async def chat_endpoint(body: ChatRequest) -> dict:
+    """Return a complete LLM response as JSON (Vercel serverless doesn't support SSE streaming)."""
     from second_brain.retrieval.search import hybrid_search, SearchResult
     from second_brain.chat.conversation import (
         get_messages,
@@ -97,49 +92,22 @@ async def chat_endpoint(body: ChatRequest) -> StreamingResponse:
     # 4. Save user message
     save_message(body.conversation_id, "user", body.message)
 
-    async def stream_response() -> AsyncGenerator[str, None]:
-        client = AsyncOpenAI(
-            base_url=cfg.llm.base_url,
-            api_key=cfg.llm.api_key,
-        )
-        full_response = []
-
-        async with client.chat.completions.stream(
-            model=cfg.llm.model,
-            messages=messages,
-        ) as stream:
-            async for chunk in stream:
-                delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-                if delta:
-                    full_response.append(delta)
-                    yield f"data: {json.dumps({'type': 'token', 'content': delta})}\n\n"
-
-        # 5. Save complete assistant message with embedding (for CHAT-04 future memory)
-        complete_response = "".join(full_response)
-        if complete_response:
-            # Save with embedding in background — fire-and-forget
-            asyncio.create_task(
-                asyncio.to_thread(
-                    save_message_with_embedding,
-                    body.conversation_id,
-                    "assistant",
-                    complete_response,
-                )
-            )
-
-        # 6. Send sources event then DONE
-        yield f"data: {json.dumps({'type': 'sources', 'sources': sources_json})}\n\n"
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        stream_response(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
+    # 5. Call LLM and collect full response
+    client = AsyncOpenAI(
+        base_url=cfg.llm.base_url,
+        api_key=cfg.llm.api_key,
     )
+    completion = await client.chat.completions.create(
+        model=cfg.llm.model,
+        messages=messages,
+    )
+    complete_response = completion.choices[0].message.content or ""
+
+    # 6. Save assistant message with embedding
+    if complete_response:
+        save_message_with_embedding(body.conversation_id, "assistant", complete_response)
+
+    return {"content": complete_response, "sources": sources_json}
 
 
 @router.post("/conversations")
