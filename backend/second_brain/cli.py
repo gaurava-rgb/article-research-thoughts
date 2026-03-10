@@ -1,35 +1,36 @@
 """
 cli.py — Second Brain CLI entry point
 
-Defines the Typer application and all CLI commands. The main command is
-`sync`, which fetches articles from Readwise Reader, stores them in Supabase,
-and generates embeddings for semantic search.
+Defines the Typer application and all CLI commands.
+
+Commands:
+    sync   — fetch articles from Readwise Reader, store and embed them
+    query  — search the knowledge base semantically and by keyword
 
 Entry points:
     python -m second_brain sync           # run as Python module
+    python -m second_brain query "..."    # run as Python module
     second-brain sync                     # run via installed script (pyproject.toml)
-
-Usage:
-    # Sync your entire Readwise library
-    second-brain sync
-
-    # Sync only the first 5 articles (useful for testing)
-    second-brain sync --limit 5
+    second-brain query "..."              # run via installed script
 
 Design notes:
-    - Uses `rich` for styled output (bold text, color).
+    - Uses `rich` for styled output (bold text, color, rules).
     - Each stage prints progress so the user can see what is happening.
     - `--limit` flag makes testing cheap — no need to process 1000 articles.
+    - Heavy imports are deferred inside command functions (lazy-import pattern)
+      so that `--help` is always instantaneous.
 
 Note: Readwise pagination must use pageCursor correctly — see readwise.py.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.rule import Rule
 
 app = typer.Typer(help="Second Brain CLI — sync and query your knowledge base")
 console = Console()
@@ -166,6 +167,89 @@ def sync(
         f"{new_count} new articles, {skipped_count} skipped, "
         f"{total_chunks} chunks created."
     )
+
+
+# =============================================================================
+# query command
+# =============================================================================
+
+@app.command()
+def query(
+    question: str = typer.Argument(..., help="Your question or search query"),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results to return"),
+    after: str = typer.Option(
+        None,
+        "--after",
+        help="Filter to articles published after date (YYYY-MM-DD)",
+    ),
+    before: str = typer.Option(
+        None,
+        "--before",
+        help="Filter to articles published before date (YYYY-MM-DD)",
+    ),
+) -> None:
+    """
+    Search your knowledge base semantically and by keyword.
+
+    Uses hybrid search: 70% pgvector cosine similarity + 30% PostgreSQL FTS.
+    Results are ranked by hybrid_score (highest first).
+
+    Examples:
+        second-brain query "what do I think about AI safety?"
+        second-brain query "machine learning" --top-k 10
+        second-brain query "AI" --after 2024-01-01
+        second-brain query "AI" --before 2024-12-31
+    """
+    # Import here (lazy) — keeps --help instantaneous; heavy imports only
+    # when the query command is actually executed.
+    from second_brain.retrieval.search import hybrid_search
+
+    console.print(f"[bold]Searching for:[/bold] {question}")
+
+    # Validate date filters — after/before accept YYYY-MM-DD and are passed
+    # as-is to the SQL function which casts them to the `date` type for
+    # published_at comparisons.
+    for flag_name, date_str in [("--after", after), ("--before", before)]:
+        if date_str is not None:
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                raise typer.BadParameter(
+                    f"'{date_str}' is not a valid date. Use YYYY-MM-DD format (e.g. 2024-03-15).",
+                    param_hint=flag_name,
+                )
+
+    # Run the hybrid search query
+    results = hybrid_search(query=question, top_k=top_k, after=after, before=before)
+
+    if not results:
+        console.print(
+            "[yellow]No results found. Try a different query or sync more articles.[/yellow]"
+        )
+        return
+
+    # Print one formatted card per result
+    for i, result in enumerate(results, start=1):
+        console.print(Rule())
+        console.print(
+            f"[bold]Result {i}[/bold]  |  "
+            f"Score: [green]{result.hybrid_score:.3f}[/green]  "
+            f"(vector: {result.vector_score:.3f}, fts: {result.fts_score:.3f})"
+        )
+        console.print(f"[bold]Title:[/bold]    {result.title}")
+        console.print(f"[bold]Author:[/bold]   {result.author or '—'}")
+        console.print(f"[bold]URL:[/bold]      {result.url or '—'}")
+        console.print(f"[bold]Date:[/bold]     {result.published_at or '—'}")
+        console.print("")
+
+        # Truncate long chunks for readable terminal output
+        chunk_preview = (
+            result.content[:300] + "..." if len(result.content) > 300 else result.content
+        )
+        console.print(f'"{chunk_preview}"')
+
+    console.print(Rule())
+    console.print(f"\n[dim]Showing {len(results)} of top {top_k} results[/dim]")
 
 
 # =============================================================================
