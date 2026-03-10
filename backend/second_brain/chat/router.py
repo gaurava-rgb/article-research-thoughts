@@ -154,19 +154,42 @@ async def sync_endpoint():
 
     async def run_sync():
         from second_brain.ingestion.readwise import fetch_all_articles, store_articles
+        from second_brain.ingestion.chunker import chunk_text, store_chunks_with_embeddings
         from second_brain.config import cfg
         from second_brain.db import get_db_client
+        from second_brain.providers.embeddings import get_embedding_provider
         import asyncio
+
         def _sync():
-            articles = fetch_all_articles(cfg.readwise.token)
             db = get_db_client()
-            return store_articles(articles, db)
+            embed = get_embedding_provider()
+
+            # 1. Fetch and store new articles
+            articles = fetch_all_articles(cfg.readwise.token)
+            new_count, skipped_count = store_articles(articles, db)
+
+            # 2. Chunk and embed any sources that have no chunks yet
+            all_sources = db.table("sources").select("id, raw_text").execute().data
+            chunked_ids = {r["source_id"] for r in db.table("chunks").select("source_id").execute().data}
+            unchunked_sources = [s for s in all_sources if s["id"] not in chunked_ids]
+
+            total_chunks = 0
+            for source in unchunked_sources:
+                if not source.get("raw_text"):
+                    continue
+                chunks = chunk_text(source["raw_text"], source_id=source["id"],
+                                    target_tokens=cfg.chunking.target_tokens,
+                                    overlap_tokens=cfg.chunking.overlap_tokens)
+                total_chunks += store_chunks_with_embeddings(chunks, embed, db)
+
+            return new_count, skipped_count, total_chunks
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _sync)
 
     try:
-        new_count, skipped_count = await run_sync()
-        return {"status": "complete", "message": f"Sync complete — {new_count} new articles added, {skipped_count} already saved."}
+        new_count, skipped_count, total_chunks = await run_sync()
+        return {"status": "complete", "message": f"Sync complete — {new_count} new articles, {skipped_count} already saved, {total_chunks} chunks indexed."}
     except Exception as exc:
         # Log the full traceback server-side; return a safe message to the client
         traceback.print_exc()
