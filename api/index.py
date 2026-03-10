@@ -9,15 +9,21 @@ FastAPI directly via `uvicorn api.index:app --port 8000`.
 """
 import sys
 import os
+import traceback
 
 # Add the backend directory to sys.path so `second_brain` package is importable.
 # In Vercel's serverless environment, the repo root is the working directory.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Second Brain API")
+
+@app.exception_handler(Exception)
+async def debug_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(status_code=500, content={"error": str(exc), "trace": traceback.format_exc()})
 
 # CORS: allow local Next.js dev server.
 # In production on Vercel, same-origin (no CORS needed), but this is harmless.
