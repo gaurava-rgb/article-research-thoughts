@@ -47,7 +47,13 @@ Plans:
   3. Past conversations appear in the sidebar — user can click one, see the full history, and continue asking questions
   4. The system recalls relevant past conversations when answering new questions ("we discussed this in a March session")
   5. Frontend is deployed to Vercel and accessible via URL; source ingestion panel allows triggering a Readwise sync from the UI
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — FastAPI chat backend: schema additions, conversation CRUD, memory retrieval, streaming /api/chat endpoint
+- [ ] 02-02-PLAN.md — Next.js frontend scaffold: chat UI, message bubbles, citation cards (UI-02), section styling (UI-03), conversation sidebar (UI-04)
+- [ ] 02-03-PLAN.md — Source ingestion panel: Readwise sync button + URL paste field (UI-05), POST /api/sync endpoint
+- [ ] 02-04-PLAN.md — Vercel deployment: api/index.py entrypoint, vercel.json config, deploy to production (UI-07)
 
 ### Phase 3: Clustering + Topic Evolution
 **Goal**: Articles automatically organize into coherent topic clusters on ingestion, and those clusters update as the corpus grows — no manual tagging required
@@ -87,7 +93,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-10 |
-| 2. Chat UI + Memory | 0/? | Not started | - |
+| 2. Chat UI + Memory | 0/4 | Not started | - |
 | 3. Clustering + Topic Evolution | 0/? | Not started | - |
 | 4. Synthesis Engine | 0/? | Not started | - |
 | 5. Proactive Insights + Digests | 0/? | Not started | - |
@@ -137,3 +143,4 @@ Plans:
 ---
 *Roadmap created: 2026-03-10*
 *Phase 1 plans created: 2026-03-10*
+*Phase 2 plans created: 2026-03-10*
