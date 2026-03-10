@@ -7,10 +7,21 @@ import { IngestionPanel } from "@/components/IngestionPanel";
 
 export function NewChatClient() {
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    createConversation().then((conv) => setConversationId(conv.id));
+    createConversation()
+      .then((conv) => setConversationId(conv.id))
+      .catch((err) => setError(String(err)));
   }, []);
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center text-destructive text-sm">
+        Failed to start conversation: {error}
+      </div>
+    );
+  }
 
   if (!conversationId) {
     return (

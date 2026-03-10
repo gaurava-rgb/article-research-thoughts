@@ -1,0 +1,8 @@
+fastapi
+supabase
+openai
+pyyaml
+tiktoken
+httpx
+typer[all]
+rich
