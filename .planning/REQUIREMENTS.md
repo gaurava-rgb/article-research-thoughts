@@ -1,0 +1,143 @@
+# Requirements: Second Brain — Personal Knowledge System
+
+**Defined:** 2026-03-10
+**Core Value:** The system must answer "what do I actually think about X?" by synthesizing across all saved sources — not just retrieve matching text chunks.
+
+## v1 Requirements
+
+### Ingestion
+
+- [ ] **ING-01**: User can trigger Readwise Reader sync that imports all articles via READWISE_TOKEN (with correct pagination — no missing articles)
+- [ ] **ING-02**: Each article is stored with full metadata: title, author, URL, published_at, ingested_at, source_type
+- [ ] **ING-03**: Articles are chunked into semantic segments (~500 tokens with overlap) and stored as chunks
+- [ ] **ING-04**: Each chunk has an embedding generated and stored in pgvector
+- [ ] **ING-05**: Incremental sync — re-running ingestion only processes new/updated articles, not the full corpus
+
+### Retrieval
+
+- [ ] **RET-01**: User can search knowledge base semantically (meaning-based, not just keyword matching)
+- [ ] **RET-02**: Search combines vector similarity + full-text keyword search (hybrid search)
+- [ ] **RET-03**: User can filter search by time range ("articles from last 3 months", "before 2025")
+- [ ] **RET-04**: Search results return source metadata (title, author, URL) alongside matched content
+
+### Structuring
+
+- [ ] **STR-01**: New articles are automatically assigned to topics (clusters) on ingestion — no manual tagging required
+- [ ] **STR-02**: Topic summaries are automatically rewritten when new articles join a topic
+- [ ] **STR-03**: System tracks publication dates to enable temporal reasoning across topics
+
+### Synthesis
+
+- [ ] **SYN-01**: User can ask a question and receive a narrative response that synthesizes across multiple sources (not just excerpts)
+- [ ] **SYN-02**: Every response clearly marks [FROM YOUR SOURCES] vs [LLM ANALYSIS] sections
+- [ ] **SYN-03**: Every response cites specific articles with clickable links
+- [ ] **SYN-04**: System detects contradictions between sources and surfaces them when relevant
+
+### Chat & Memory
+
+- [ ] **CHAT-01**: User can have multi-turn conversations — follow-up questions reference prior turns in the same session
+- [ ] **CHAT-02**: Past conversations are stored and listed in a sidebar
+- [ ] **CHAT-03**: User can load and continue a past conversation
+- [ ] **CHAT-04**: Cross-session memory — system recalls relevant past conversations when answering new questions ("remember when we discussed X?")
+
+### Workflows
+
+- [ ] **WORK-01**: System generates a weekly digest summarizing new sources ingested, topic evolution, and emerging themes
+- [ ] **WORK-02**: System proactively detects patterns across recent ingestions and stores them as insights
+- [ ] **WORK-03**: User sees unseen insight count ("3 new insights") in the chat UI
+
+### Frontend
+
+- [ ] **UI-01**: Chat interface with message bubbles and markdown rendering
+- [ ] **UI-02**: Source citations rendered as expandable cards (click to see original article)
+- [ ] **UI-03**: Visual distinction between [FROM SOURCES] and [ANALYSIS] content (different styling)
+- [ ] **UI-04**: Conversation sidebar showing past chats
+- [ ] **UI-05**: Source ingestion panel — paste URL or trigger Readwise sync
+- [ ] **UI-06**: Insight notification indicator in UI
+- [ ] **UI-07**: Frontend deployed to Vercel
+
+### Infrastructure
+
+- [ ] **INFRA-01**: LLM provider is swappable via config.yaml (start with Claude Sonnet via OpenRouter)
+- [ ] **INFRA-02**: Embedding provider is swappable via config.yaml (start with OpenRouter embeddings)
+- [ ] **INFRA-03**: Full database schema in schema.sql covering all tables from day one (sources, chunks, topics, source_topics, conversations, messages, insights)
+
+## v2 Requirements
+
+### Extended Ingestion
+
+- **ING-V2-01**: Support PDF upload as ingestion source
+- **ING-V2-02**: Support YouTube transcript ingestion
+- **ING-V2-03**: Support manual text/note ingestion
+- **ING-V2-04**: RSS feed monitoring
+
+### Advanced Synthesis
+
+- **SYN-V2-01**: "Debate mode" — system steelmans opposing arguments from saved sources
+- **SYN-V2-02**: Idea generation from cross-topic pattern analysis
+- **SYN-V2-03**: Belief tracking — "what do I currently believe about X based on my reading?"
+
+### Local Inference
+
+- **INFRA-V2-01**: Local embedding provider (sentence-transformers) for zero embedding cost
+- **INFRA-V2-02**: Local LLM provider (Ollama) for offline use
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Notion import | Readwise is source of truth; Notion was a failed workaround |
+| Mobile app | Web-first; mobile is a future milestone |
+| Multi-user support | Personal tool only |
+| Manual tagging | Auto-clustering replaces it |
+| Real-time collaboration | Out of scope for personal tool |
+| Email notifications | Not in core workflow; possible v2 |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| ING-01 | — | Pending |
+| ING-02 | — | Pending |
+| ING-03 | — | Pending |
+| ING-04 | — | Pending |
+| ING-05 | — | Pending |
+| RET-01 | — | Pending |
+| RET-02 | — | Pending |
+| RET-03 | — | Pending |
+| RET-04 | — | Pending |
+| STR-01 | — | Pending |
+| STR-02 | — | Pending |
+| STR-03 | — | Pending |
+| SYN-01 | — | Pending |
+| SYN-02 | — | Pending |
+| SYN-03 | — | Pending |
+| SYN-04 | — | Pending |
+| CHAT-01 | — | Pending |
+| CHAT-02 | — | Pending |
+| CHAT-03 | — | Pending |
+| CHAT-04 | — | Pending |
+| WORK-01 | — | Pending |
+| WORK-02 | — | Pending |
+| WORK-03 | — | Pending |
+| UI-01 | — | Pending |
+| UI-02 | — | Pending |
+| UI-03 | — | Pending |
+| UI-04 | — | Pending |
+| UI-05 | — | Pending |
+| UI-06 | — | Pending |
+| UI-07 | — | Pending |
+| INFRA-01 | — | Pending |
+| INFRA-02 | — | Pending |
+| INFRA-03 | — | Pending |
+
+**Coverage:**
+- v1 requirements: 33 total
+- Mapped to phases: 0
+- Unmapped: 33 ⚠️ (will be mapped during roadmap creation)
+
+---
+*Requirements defined: 2026-03-10*
+*Last updated: 2026-03-10 after initial definition*
