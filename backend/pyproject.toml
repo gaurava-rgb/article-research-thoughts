@@ -23,5 +23,9 @@ dev = [
     "pytest-asyncio",
 ]
 
+[project.scripts]
+# Installed script entry point: `second-brain sync` after `pip install -e .`
+second-brain = "second_brain.cli:app"
+
 [tool.hatch.build.targets.wheel]
 packages = ["second_brain"]
