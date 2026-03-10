@@ -101,3 +101,60 @@ CREATE TABLE insights (
   seen       BOOLEAN     NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- =============================================================================
+-- Hybrid search function: combines pgvector cosine similarity with PostgreSQL FTS
+-- Apply to Supabase via: psql $DATABASE_URL -f schema.sql (idempotent: OR REPLACE)
+--
+-- Scoring weights (tunable here):
+--   70% vector (semantic meaning) + 30% FTS (keyword relevance)
+-- Vector-heavy because semantic similarity is the primary signal in a personal
+-- knowledge base. Adjust the 0.7 / 0.3 constants below if you want more keyword
+-- influence (e.g. 0.5 / 0.5 for equal weighting).
+-- =============================================================================
+CREATE OR REPLACE FUNCTION hybrid_search(
+  query_embedding   vector(1536),
+  query_text        text,
+  match_count       int     DEFAULT 10,
+  date_after        date    DEFAULT NULL,
+  date_before       date    DEFAULT NULL
+)
+RETURNS TABLE (
+  chunk_id      uuid,
+  source_id     uuid,
+  content       text,
+  vector_score  float,
+  fts_score     float,
+  hybrid_score  float,
+  title         text,
+  author        text,
+  url           text,
+  published_at  timestamptz
+)
+LANGUAGE sql STABLE
+AS $$
+  SELECT
+    c.id                                                          AS chunk_id,
+    c.source_id,
+    c.content,
+    1 - (c.embedding <=> query_embedding)                        AS vector_score,
+    ts_rank(to_tsvector('english', c.content),
+            plainto_tsquery('english', query_text))              AS fts_score,
+    -- Hybrid: 70% vector similarity + 30% full-text rank
+    -- Weights are tunable — edit the constants here and re-run this file
+    0.7 * (1 - (c.embedding <=> query_embedding))
+    + 0.3 * ts_rank(to_tsvector('english', c.content),
+                    plainto_tsquery('english', query_text))      AS hybrid_score,
+    s.title,
+    s.author,
+    s.url,
+    s.published_at
+  FROM chunks c
+  JOIN sources s ON s.id = c.source_id
+  WHERE
+    c.embedding IS NOT NULL
+    AND (date_after  IS NULL OR s.published_at >= date_after)
+    AND (date_before IS NULL OR s.published_at <= date_before)
+  ORDER BY hybrid_score DESC
+  LIMIT match_count;
+$$;
