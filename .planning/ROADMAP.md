@@ -63,7 +63,13 @@ Plans:
   1. After syncing new articles, each article is assigned to a topic cluster automatically — no user action required
   2. When a new article joins an existing topic, the topic summary is rewritten to reflect the expanded set of sources
   3. Temporal queries work: asking "what changed about X between Q3 and Q4?" returns an answer grounded in publication dates
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Schema additions (sources.embedding, topics.centroid_embedding, match_topic SQL fn) + clustering.py stub + 7 failing tests
+- [ ] 03-02-PLAN.md — Implement clustering.py: TDD red-to-green for all STR-01 + STR-02 behaviors
+- [ ] 03-03-PLAN.md — GET /api/topics endpoint: topic list with article counts for Phase 4 use
+- [ ] 03-04-PLAN.md — Wire clustering into sync command (cli.py): Steps 4+5, batched summary regen, human verify
 
 ### Phase 4: Synthesis Engine
 **Goal**: User asks a complex question and receives a narrative answer that synthesizes across multiple sources, clearly attributed, with contradictions surfaced
@@ -94,7 +100,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-10 |
 | 2. Chat UI + Memory | 4/4 | Complete   | 2026-03-10 |
-| 3. Clustering + Topic Evolution | 0/? | Not started | - |
+| 3. Clustering + Topic Evolution | 0/4 | Not started | - |
 | 4. Synthesis Engine | 0/? | Not started | - |
 | 5. Proactive Insights + Digests | 0/? | Not started | - |
 
@@ -144,3 +150,4 @@ Plans:
 *Roadmap created: 2026-03-10*
 *Phase 1 plans created: 2026-03-10*
 *Phase 2 plans created: 2026-03-10*
+*Phase 3 plans created: 2026-03-10*
