@@ -7,11 +7,11 @@
 
 ### Ingestion
 
-- [ ] **ING-01**: User can trigger Readwise Reader sync that imports all articles via READWISE_TOKEN (with correct pagination — no missing articles)
-- [ ] **ING-02**: Each article is stored with full metadata: title, author, URL, published_at, ingested_at, source_type
-- [ ] **ING-03**: Articles are chunked into semantic segments (~500 tokens with overlap) and stored as chunks
-- [ ] **ING-04**: Each chunk has an embedding generated and stored in pgvector
-- [ ] **ING-05**: Incremental sync — re-running ingestion only processes new/updated articles, not the full corpus
+- [x] **ING-01**: User can trigger Readwise Reader sync that imports all articles via READWISE_TOKEN (with correct pagination — no missing articles)
+- [x] **ING-02**: Each article is stored with full metadata: title, author, URL, published_at, ingested_at, source_type
+- [x] **ING-03**: Articles are chunked into semantic segments (~500 tokens with overlap) and stored as chunks
+- [x] **ING-04**: Each chunk has an embedding generated and stored in pgvector
+- [x] **ING-05**: Incremental sync — re-running ingestion only processes new/updated articles, not the full corpus
 
 ### Retrieval
 
@@ -99,11 +99,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ING-01 | Phase 1 | Pending |
-| ING-02 | Phase 1 | Pending |
-| ING-03 | Phase 1 | Pending |
-| ING-04 | Phase 1 | Pending |
-| ING-05 | Phase 1 | Pending |
+| ING-01 | Phase 1 | Complete |
+| ING-02 | Phase 1 | Complete |
+| ING-03 | Phase 1 | Complete |
+| ING-04 | Phase 1 | Complete |
+| ING-05 | Phase 1 | Complete |
 | RET-01 | Phase 1 | Pending |
 | RET-02 | Phase 1 | Pending |
 | RET-03 | Phase 1 | Pending |

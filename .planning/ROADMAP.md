@@ -86,7 +86,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/3 | In Progress|  |
+| 1. Foundation | 2/3 | In Progress|  |
 | 2. Chat UI + Memory | 0/? | Not started | - |
 | 3. Clustering + Topic Evolution | 0/? | Not started | - |
 | 4. Synthesis Engine | 0/? | Not started | - |

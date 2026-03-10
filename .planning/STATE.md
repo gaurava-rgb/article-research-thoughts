@@ -3,15 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 1 — Foundation
-current_plan: Plan 2 of 3
-status: in-progress
-last_updated: "2026-03-10T15:14:32Z"
+current_plan: 2 of 3 in Phase 1
+status: executing
+last_updated: "2026-03-10T15:23:20.805Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
 ---
 
 # State: Second Brain — Personal Knowledge System
@@ -26,12 +25,12 @@ progress:
 
 **Milestone:** 1 (of 1 planned)
 **Current Phase:** 1 — Foundation
-**Current Plan:** 2 of 3 in Phase 1
-**Status:** In Progress — Plan 01-01 complete
+**Current Plan:** 3 of 3 in Phase 1
+**Status:** In Progress — Plans 01-01 and 01-02 complete
 
 ```
 Progress: Phase 1 of 5
-[███░░░░░░░] 33% complete (1 of 3 plans in Phase 1)
+[███████░░░] 67% complete (2 of 3 plans in Phase 1)
 ```
 
 ---
@@ -40,7 +39,7 @@ Progress: Phase 1 of 5
 
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
-| 1 | Foundation | In Progress (1/3 plans done) | 3 |
+| 1 | Foundation | In Progress (2/3 plans done) | 3 |
 | 2 | Chat UI + Memory | Not started | TBD |
 | 3 | Clustering + Topic Evolution | Not started | TBD |
 | 4 | Synthesis Engine | Not started | TBD |
@@ -50,8 +49,8 @@ Progress: Phase 1 of 5
 
 ## Performance Metrics
 
-- Plans executed: 1
-- Plans passing on first run: 1/1 (100%)
+- Plans executed: 2
+- Plans passing on first run: 2/2 (100%)
 - Phases completed: 0/5
 - Requirements mapped: 33/33
 
@@ -73,6 +72,9 @@ Progress: Phase 1 of 5
 | All 7 tables in schema.sql upfront | Avoids ALTER TABLE migrations across phases |
 | Provider abstraction via ABC + factory | Callers never change when provider switches |
 | Config env var resolution at load time | _env fields resolved to values at startup |
+| pageCursor pagination | Prevents missing articles when Readwise corpus shifts between pages |
+| Sentence-aware chunking before token accumulation | Avoids mid-sentence cuts; better embedding quality |
+| Lazy imports in CLI sync command | Keeps --help instantaneous; heavy imports only when sync actually runs |
 
 ### Known Constraints
 
@@ -102,11 +104,11 @@ None currently.
 
 ## Session Continuity
 
-**Last session:** 2026-03-10T15:14:32Z — Completed 01-foundation 01-01-PLAN.md
+**Last session:** 2026-03-10T15:23:20.803Z
 
-**To resume:** Run `/gsd:execute-phase 1` to continue Phase 1 (Foundation) — execute Plan 02.
+**To resume:** Run `/gsd:execute-phase 1` to continue Phase 1 (Foundation) — execute Plan 03.
 
-**Next action:** Execute Plan 01-02 — Readwise ingestion pipeline (chunking, embedding, deduplication).
+**Next action:** Execute Plan 01-03 — Retrieval pipeline (hybrid vector + full-text search).
 
 ---
 *State initialized: 2026-03-10 after roadmap creation*
