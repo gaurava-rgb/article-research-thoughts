@@ -158,3 +158,47 @@ AS $$
   ORDER BY hybrid_score DESC
   LIMIT match_count;
 $$;
+
+-- ============================================================
+-- Phase 2 Additions: Cross-session memory on messages table
+-- ============================================================
+
+-- Add embedding column to messages for semantic search over past conversations
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS embedding vector(1536);
+
+-- IVFFlat index for semantic search over message embeddings
+CREATE INDEX IF NOT EXISTS messages_embedding_idx
+  ON messages USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
+
+-- search_past_messages: semantic search over past assistant messages
+-- Used by memory.py to inject relevant past conversation context
+CREATE OR REPLACE FUNCTION search_past_messages(
+  query_embedding vector(1536),
+  exclude_conversation_id uuid,
+  match_count int DEFAULT 3
+)
+RETURNS TABLE (
+  message_id uuid,
+  conv_id uuid,
+  conv_title text,
+  content text,
+  created_at timestamptz,
+  similarity float
+)
+LANGUAGE sql STABLE
+AS $$
+  SELECT
+    m.id          AS message_id,
+    c.id          AS conv_id,
+    c.title       AS conv_title,
+    m.content,
+    m.created_at,
+    1 - (m.embedding <=> query_embedding) AS similarity
+  FROM messages m
+  JOIN conversations c ON c.id = m.conversation_id
+  WHERE m.role = 'assistant'
+    AND m.embedding IS NOT NULL
+    AND m.conversation_id != exclude_conversation_id
+  ORDER BY m.embedding <=> query_embedding
+  LIMIT match_count;
+$$;
