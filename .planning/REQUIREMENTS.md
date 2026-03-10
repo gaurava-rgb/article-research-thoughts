@@ -54,7 +54,7 @@
 - [x] **UI-04**: Conversation sidebar showing past chats
 - [x] **UI-05**: Source ingestion panel — paste URL or trigger Readwise sync
 - [ ] **UI-06**: Insight notification indicator in UI
-- [ ] **UI-07**: Frontend deployed to Vercel
+- [x] **UI-07**: Frontend deployed to Vercel
 
 ### Infrastructure
 
@@ -116,7 +116,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-03 | Phase 2 | Complete |
 | UI-04 | Phase 2 | Complete |
 | UI-05 | Phase 2 | Complete |
-| UI-07 | Phase 2 | Pending |
+| UI-07 | Phase 2 | Complete |
 | CHAT-01 | Phase 2 | Complete |
 | CHAT-02 | Phase 2 | Complete |
 | CHAT-03 | Phase 2 | Complete |

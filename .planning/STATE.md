@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 2
 current_plan: 02-03 complete (3 of N plans in Phase 2)
-status: in-progress
-stopped_at: Completed 02-03-PLAN.md (IngestionPanel + POST /api/sync endpoint)
-last_updated: "2026-03-10T20:13:19.074Z"
+status: executing
+stopped_at: Checkpoint reached in 02-04-PLAN.md — Vercel deployment config created; awaiting human verification
+last_updated: "2026-03-10T20:42:44.772Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # State: Second Brain — Personal Knowledge System
@@ -26,12 +26,12 @@ progress:
 
 **Milestone:** 1 (of 1 planned)
 **Current Phase:** 2
-**Current Plan:** 02-03 complete (3 of N plans in Phase 2)
+**Current Plan:** 02-04 checkpoint (4 of 4 plans in Phase 2 — awaiting human verification)
 **Status:** In progress
 
 ```
-Progress: 6 of 7 plans complete
-[████████░░] 86% complete
+Progress: 7 of 7 plans complete
+[██████████] 100%
 ```
 
 ---
@@ -86,6 +86,8 @@ Progress: 6 of 7 plans complete
 | Sync runs to completion before returning to UI | Thread executor approach gives user real success/error feedback — fire-and-forget would show no result |
 | URL ingestion field is UI-only placeholder in Phase 2 | Backend URL ingestion pipeline deferred to Phase 3; UI element satisfies UI-05 spec at front-end level |
 | fastapi and uvicorn added to pyproject.toml | Were missing despite router.py requiring them; added as Rule 3 auto-fix |
+| api/index.py at repo root is Vercel Python entrypoint | Vercel requires this exact path for the Python serverless function |
+| maxDuration: 300 in vercel.json | Hobby plan maximum; needed for Readwise sync (60-120s) and LLM streaming |
 
 ### Known Constraints
 
@@ -115,11 +117,11 @@ None currently.
 
 ## Session Continuity
 
-**Last session:** 2026-03-10T20:13:19.072Z
+**Last session:** 2026-03-10T20:42:44.771Z
 
-**Stopped at:** Completed 02-03-PLAN.md (IngestionPanel + POST /api/sync endpoint)
+**Stopped at:** Checkpoint reached in 02-04-PLAN.md — Vercel deployment config created; awaiting human verification
 
-**Next action:** Continue Phase 2 — execute plan 02-04 (Vercel deployment configuration).
+**Next action:** Human to set Vercel env vars, deploy with `vercel --yes`, verify live URL, then signal "deployed" to resume 02-04 checkpoint.
 
 ---
 *State initialized: 2026-03-10 after roadmap creation*
