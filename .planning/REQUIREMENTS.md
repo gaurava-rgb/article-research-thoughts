@@ -58,9 +58,9 @@
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: LLM provider is swappable via config.yaml (start with Claude Sonnet via OpenRouter)
-- [ ] **INFRA-02**: Embedding provider is swappable via config.yaml (start with OpenRouter embeddings)
-- [ ] **INFRA-03**: Full database schema in schema.sql covering all tables from day one (sources, chunks, topics, source_topics, conversations, messages, insights)
+- [x] **INFRA-01**: LLM provider is swappable via config.yaml (start with Claude Sonnet via OpenRouter)
+- [x] **INFRA-02**: Embedding provider is swappable via config.yaml (start with OpenRouter embeddings)
+- [x] **INFRA-03**: Full database schema in schema.sql covering all tables from day one (sources, chunks, topics, source_topics, conversations, messages, insights)
 
 ## v2 Requirements
 
@@ -108,9 +108,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RET-02 | Phase 1 | Pending |
 | RET-03 | Phase 1 | Pending |
 | RET-04 | Phase 1 | Pending |
-| INFRA-01 | Phase 1 | Pending |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Complete |
 | UI-01 | Phase 2 | Pending |
 | UI-02 | Phase 2 | Pending |
 | UI-03 | Phase 2 | Pending |

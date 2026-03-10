@@ -30,7 +30,12 @@
   3. Hybrid search (vector + keyword) returns results filtered by date range alongside source metadata (title, author, URL)
   4. LLM provider and embedding provider can be swapped by editing config.yaml without touching source code
   5. The full database schema (sources, chunks, topics, source_topics, conversations, messages, insights) is in schema.sql and applied in one command
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Database schema (all 7 tables) + Python project scaffold + config.yaml + provider abstraction
+- [ ] 01-02-PLAN.md — Readwise sync CLI: paginated fetch, chunking, embedding generation, incremental sync
+- [ ] 01-03-PLAN.md — Hybrid retrieval CLI: vector + FTS search, date filters, formatted result display
 
 ### Phase 2: Chat UI + Memory
 **Goal**: User can open a browser, ask a question, have a multi-turn conversation, and return to that conversation in a future session
@@ -81,7 +86,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/? | Not started | - |
+| 1. Foundation | 1/3 | In Progress|  |
 | 2. Chat UI + Memory | 0/? | Not started | - |
 | 3. Clustering + Topic Evolution | 0/? | Not started | - |
 | 4. Synthesis Engine | 0/? | Not started | - |
@@ -131,3 +136,4 @@
 
 ---
 *Roadmap created: 2026-03-10*
+*Phase 1 plans created: 2026-03-10*
