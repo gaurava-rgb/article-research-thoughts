@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 2
-current_plan: 02-01 complete
+current_plan: 02-02 complete (2 of N plans in Phase 2)
 status: in-progress
-stopped_at: Completed 02-01-PLAN.md (Chat backend module, conversation CRUD, SSE streaming)
-last_updated: "2026-03-10T20:04:29.929Z"
+stopped_at: Completed 02-02-PLAN.md (Next.js frontend scaffold + streaming chat UI, citation cards, conversation sidebar)
+last_updated: "2026-03-10T20:12:33.880Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # State: Second Brain — Personal Knowledge System
@@ -26,12 +26,12 @@ progress:
 
 **Milestone:** 1 (of 1 planned)
 **Current Phase:** 2
-**Current Plan:** 02-01 complete (1 of N plans in Phase 2)
+**Current Plan:** 02-02 complete (2 of N plans in Phase 2)
 **Status:** In progress
 
 ```
-Progress: 4 of 7 plans complete
-[██████░░░░] 57% complete
+Progress: 5 of 7 plans complete
+[███████░░░] 71% complete
 ```
 
 ---
@@ -81,6 +81,8 @@ Progress: 4 of 7 plans complete
 | Module-level import of get_db_client for test patchability | db.py only loads supabase library (no env vars triggered); allows patch("second_brain.chat.conversation.get_db_client") in tests |
 | Lazy wrapper function for get_embedding_provider in memory.py | embeddings.py imports cfg at module level (triggers env var validation); wrapper defers the real import to call time while still being patchable by name |
 | SSE format: token events + sources event + [DONE] terminator | Standard SSE pattern for streaming LLM responses with source attribution |
+| Async params pattern for Next.js 15+ dynamic routes | params typed as Promise<{id}> and awaited in async server component — required for Next.js 15+/16 |
+| MemoizedMarkdown wraps react-markdown in React.memo | Prevents re-render thrash during SSE token streaming — each token update would re-render the whole markdown tree without memoization |
 
 ### Known Constraints
 
@@ -110,11 +112,11 @@ None currently.
 
 ## Session Continuity
 
-**Last session:** 2026-03-10T20:04:00Z
+**Last session:** 2026-03-10T20:12:33.878Z
 
-**Stopped at:** Completed 02-01-PLAN.md (Chat backend module, conversation CRUD, SSE streaming)
+**Stopped at:** Completed 02-02-PLAN.md (Next.js frontend scaffold + streaming chat UI, citation cards, conversation sidebar)
 
-**Next action:** Continue Phase 2 — execute plan 02-02 (frontend chat UI or next plan in sequence).
+**Next action:** Continue Phase 2 — execute plan 02-03 (ingestion panel UI) or next plan in sequence.
 
 ---
 *State initialized: 2026-03-10 after roadmap creation*

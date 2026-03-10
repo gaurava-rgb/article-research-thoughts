@@ -49,9 +49,9 @@
 ### Frontend
 
 - [x] **UI-01**: Chat interface with message bubbles and markdown rendering
-- [ ] **UI-02**: Source citations rendered as expandable cards (click to see original article)
-- [ ] **UI-03**: Visual distinction between [FROM SOURCES] and [ANALYSIS] content (different styling)
-- [ ] **UI-04**: Conversation sidebar showing past chats
+- [x] **UI-02**: Source citations rendered as expandable cards (click to see original article)
+- [x] **UI-03**: Visual distinction between [FROM SOURCES] and [ANALYSIS] content (different styling)
+- [x] **UI-04**: Conversation sidebar showing past chats
 - [ ] **UI-05**: Source ingestion panel — paste URL or trigger Readwise sync
 - [ ] **UI-06**: Insight notification indicator in UI
 - [ ] **UI-07**: Frontend deployed to Vercel
@@ -112,9 +112,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
 | UI-01 | Phase 2 | Complete |
-| UI-02 | Phase 2 | Pending |
-| UI-03 | Phase 2 | Pending |
-| UI-04 | Phase 2 | Pending |
+| UI-02 | Phase 2 | Complete |
+| UI-03 | Phase 2 | Complete |
+| UI-04 | Phase 2 | Complete |
 | UI-05 | Phase 2 | Pending |
 | UI-07 | Phase 2 | Pending |
 | CHAT-01 | Phase 2 | Complete |
