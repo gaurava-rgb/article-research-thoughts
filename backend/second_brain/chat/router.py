@@ -153,14 +153,20 @@ async def sync_endpoint():
     import traceback
 
     async def run_sync():
-        # Lazy import — avoids loading ingestion deps at startup (cold start cost)
-        from second_brain.ingestion.readwise import sync_readwise
+        from second_brain.ingestion.readwise import fetch_all_articles, store_articles
+        from second_brain.config import cfg
+        from second_brain.db import get_db_client
+        import asyncio
+        def _sync():
+            articles = fetch_all_articles(cfg.readwise.token)
+            db = get_db_client()
+            return store_articles(articles, db)
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, sync_readwise)
+        return await loop.run_in_executor(None, _sync)
 
     try:
-        await run_sync()
-        return {"status": "complete", "message": "Readwise sync completed successfully."}
+        new_count, skipped_count = await run_sync()
+        return {"status": "complete", "message": f"Sync complete — {new_count} new articles added, {skipped_count} already saved."}
     except Exception as exc:
         # Log the full traceback server-side; return a safe message to the client
         traceback.print_exc()
