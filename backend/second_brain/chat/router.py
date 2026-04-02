@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -50,6 +50,41 @@ class ConversationPatch(BaseModel):
     title: str
 
 
+def _load_source_rows(source_ids: list[str]) -> dict[str, dict]:
+    if not source_ids:
+        return {}
+
+    from second_brain.db import get_db_client
+
+    rows = (
+        get_db_client()
+        .table("sources")
+        .select(
+            "id, title, author, url, published_at, source_type, readwise_id, external_id, "
+            "kind, tier, publisher, remote_updated_at, parent_source_id, thread_key, language, metadata"
+        )
+        .in_("id", source_ids)
+        .execute()
+        .data
+        or []
+    )
+    return {row["id"]: row for row in rows}
+
+
+def _serialize_source_payload(search_result, source_row: dict | None) -> dict:
+    return {
+        "source_id": search_result.source_id,
+        "title": search_result.title,
+        "url": search_result.url,
+        "author": search_result.author,
+        "score": round(search_result.hybrid_score, 3),
+        "published_at": search_result.published_at,
+        "kind": search_result.kind or (source_row or {}).get("kind"),
+        "tier": search_result.tier or (source_row or {}).get("tier"),
+        "publisher": search_result.publisher or (source_row or {}).get("publisher"),
+    }
+
+
 @router.post("/chat")
 async def chat_endpoint(body: ChatRequest) -> dict:
     """Return one complete assistant reply and cited sources as JSON."""
@@ -71,16 +106,13 @@ async def chat_endpoint(body: ChatRequest) -> dict:
             seen.add(r.source_id)
             sources.append(r)
 
+    source_rows = _load_source_rows([source.source_id for source in sources])
+
     sources_for_prompt = "\n\n".join(
         f"[Source: {s.title}]\n{s.content}" for s in sources
     )
     sources_json = [
-        {
-            "title": s.title,
-            "url": s.url,
-            "author": s.author,
-            "score": round(s.hybrid_score, 3),
-        }
+        _serialize_source_payload(s, source_rows.get(s.source_id))
         for s in sources
     ]
 
@@ -140,6 +172,58 @@ def get_messages_endpoint(conversation_id: str):
     """Return all messages for a conversation in chronological order."""
     from second_brain.chat.conversation import get_messages
     return get_messages(conversation_id)
+
+
+@router.get("/sources/{source_id}")
+def get_source_detail_endpoint(source_id: str):
+    """Return source metadata plus any stored Phase 2 analysis."""
+    from second_brain.db import get_db_client
+    from second_brain.analysis.extraction import get_source_analysis
+
+    db = get_db_client()
+    rows = (
+        db
+        .table("sources")
+        .select(
+            "id, title, author, url, published_at, ingested_at, updated_at, source_type, "
+            "readwise_id, external_id, kind, tier, publisher, remote_updated_at, "
+            "parent_source_id, thread_key, language, metadata"
+        )
+        .eq("id", source_id)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Source not found")
+    source = rows[0]
+    analysis = get_source_analysis(source_id, db)
+    return {
+        **source,
+        "analysis": {
+            "entities": analysis["entities"],
+            "claims": analysis["claims"],
+        },
+        "latest_analysis_run": analysis["latest_run"],
+    }
+
+
+@router.post("/sources/{source_id}/analyze")
+async def analyze_source_endpoint(source_id: str):
+    """Run Phase 2 extraction for a single source and return the stored analysis."""
+    import asyncio
+
+    def _run():
+        from second_brain.analysis.extraction import analyze_source
+        from second_brain.db import get_db_client
+        from second_brain.providers.llm import get_llm_provider
+
+        db = get_db_client()
+        llm = get_llm_provider()
+        return analyze_source(source_id, db, llm)
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run)
 
 
 @router.patch("/conversations/{conversation_id}")

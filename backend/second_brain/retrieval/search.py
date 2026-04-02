@@ -62,6 +62,9 @@ class SearchResult:
     author: str | None
     url: str | None
     published_at: str | None
+    kind: str | None = None
+    tier: str | None = None
+    publisher: str | None = None
 
 
 # =============================================================================
@@ -151,6 +154,9 @@ def hybrid_search(
                 author=row.get("author"),
                 url=row.get("url"),
                 published_at=str(row["published_at"]) if row.get("published_at") else None,
+                kind=row.get("kind"),
+                tier=row.get("tier"),
+                publisher=row.get("publisher"),
             )
         )
 

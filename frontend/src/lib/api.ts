@@ -1,4 +1,4 @@
-import type { Conversation, Insight, Message, RelatedConversation, Source } from "./types";
+import type { AnalysisRun, Conversation, Insight, Message, RelatedConversation, Source, SourceAnalysis, SourceClaim, SourceDetail, SourceEntity } from "./types";
 
 // Base URL: empty string in production (same-origin via vercel.json rewrites),
 // http://localhost:8000 in development (set via NEXT_PUBLIC_API_URL env var or defaults to "").
@@ -79,6 +79,126 @@ export async function fetchSimilarConversations(
   return res.json() as Promise<RelatedConversation[]>;
 }
 
+export async function fetchSourceDetail(sourceId: string): Promise<SourceDetail> {
+  const res = await fetch(`${BASE}/api/sources/${sourceId}`);
+  if (!res.ok) throw new Error(`Failed to fetch source detail: ${res.status}`);
+  const data = await res.json() as Record<string, unknown>;
+  const analysisData = (data.analysis as Record<string, unknown> | undefined) ?? undefined;
+  const latestRun = (data.latest_analysis_run as Record<string, unknown> | null | undefined) ?? null;
+  return {
+    id: data.id as string,
+    title: data.title as string,
+    author: (data.author as string | null) ?? null,
+    url: (data.url as string | null) ?? null,
+    publishedAt: (data.published_at as string | null) ?? null,
+    ingestedAt: data.ingested_at as string,
+    updatedAt: data.updated_at as string,
+    sourceType: data.source_type as string,
+    readwiseId: (data.readwise_id as string | null) ?? null,
+    externalId: (data.external_id as string | null) ?? null,
+    kind: data.kind as string,
+    tier: data.tier as string,
+    publisher: (data.publisher as string | null) ?? null,
+    remoteUpdatedAt: (data.remote_updated_at as string | null) ?? null,
+    parentSourceId: (data.parent_source_id as string | null) ?? null,
+    threadKey: (data.thread_key as string | null) ?? null,
+    language: data.language as string,
+    metadata: (data.metadata as Record<string, unknown>) ?? {},
+    analysis: analysisData ? mapSourceAnalysis(analysisData) : undefined,
+    latestAnalysisRun: latestRun ? mapAnalysisRun(latestRun) : null,
+  };
+}
+
+function mapAnalysisRun(run: Record<string, unknown>): AnalysisRun {
+  return {
+    id: run.id as string,
+    status: run.status as string,
+    model: (run.model as string | null) ?? null,
+    promptVersion: (run.prompt_version as string | null) ?? null,
+    startedAt: run.started_at as string,
+    finishedAt: (run.finished_at as string | null) ?? null,
+    metadata: (run.metadata as Record<string, unknown>) ?? {},
+  };
+}
+
+function mapSourceEntity(entity: Record<string, unknown>): SourceEntity {
+  return {
+    id: entity.id as string,
+    canonical_name: entity.canonical_name as string,
+    entity_type: entity.entity_type as string,
+    ticker: (entity.ticker as string | null) ?? null,
+    metadata: (entity.metadata as Record<string, unknown>) ?? {},
+    role: (entity.role as string | null) ?? null,
+    mention_count: (entity.mention_count as number | null) ?? null,
+    salience: (entity.salience as number | null) ?? null,
+    aliases: ((entity.aliases as Array<Record<string, unknown>> | undefined) ?? []).map((alias) => ({
+      entity_id: alias.entity_id as string,
+      alias: alias.alias as string,
+      alias_type: alias.alias_type as string,
+      confidence: (alias.confidence as number | null) ?? null,
+    })),
+  };
+}
+
+function mapSourceClaim(claim: Record<string, unknown>): SourceClaim {
+  return {
+    id: claim.id as string,
+    source_id: claim.source_id as string,
+    subject_entity_id: (claim.subject_entity_id as string | null) ?? null,
+    object_entity_id: (claim.object_entity_id as string | null) ?? null,
+    claim_type: claim.claim_type as string,
+    modality: claim.modality as string,
+    stance: (claim.stance as string | null) ?? null,
+    claim_text: claim.claim_text as string,
+    normalized_claim: (claim.normalized_claim as string | null) ?? null,
+    event_at: (claim.event_at as string | null) ?? null,
+    event_end_at: (claim.event_end_at as string | null) ?? null,
+    confidence: (claim.confidence as number | null) ?? null,
+    importance: (claim.importance as number | null) ?? null,
+    extraction_run_id: (claim.extraction_run_id as string | null) ?? null,
+    metadata: (claim.metadata as Record<string, unknown>) ?? {},
+    created_at: claim.created_at as string,
+    subject_entity: claim.subject_entity ? mapSourceEntity(claim.subject_entity as Record<string, unknown>) : null,
+    object_entity: claim.object_entity ? mapSourceEntity(claim.object_entity as Record<string, unknown>) : null,
+    evidence: ((claim.evidence as Array<Record<string, unknown>> | undefined) ?? []).map((evidence) => ({
+      id: evidence.id as string,
+      claim_id: evidence.claim_id as string,
+      source_id: evidence.source_id as string,
+      chunk_id: (evidence.chunk_id as string | null) ?? null,
+      evidence_text: (evidence.evidence_text as string | null) ?? null,
+      start_char: (evidence.start_char as number | null) ?? null,
+      end_char: (evidence.end_char as number | null) ?? null,
+      confidence: (evidence.confidence as number | null) ?? null,
+      created_at: evidence.created_at as string,
+      chunk_index: (evidence.chunk_index as number | null) ?? null,
+    })),
+    lenses: ((claim.lenses as Array<Record<string, unknown>> | undefined) ?? []).map((lens) => ({
+      id: lens.id as string,
+      slug: lens.slug as string,
+      name: lens.name as string,
+      description: (lens.description as string | null) ?? null,
+      weight: (lens.weight as number | null) ?? null,
+    })),
+    links: ((claim.links as Array<Record<string, unknown>> | undefined) ?? []).map((link) => ({
+      id: link.id as string,
+      from_claim_id: link.from_claim_id as string,
+      to_claim_id: link.to_claim_id as string,
+      link_type: link.link_type as string,
+      confidence: (link.confidence as number | null) ?? null,
+      explanation: (link.explanation as string | null) ?? null,
+      created_at: link.created_at as string,
+      target_claim_text: (link.target_claim_text as string | null) ?? null,
+    })),
+  };
+}
+
+function mapSourceAnalysis(analysis: Record<string, unknown>): SourceAnalysis {
+  return {
+    entities: ((analysis.entities as Array<Record<string, unknown>> | undefined) ?? []).map(mapSourceEntity),
+    claims: ((analysis.claims as Array<Record<string, unknown>> | undefined) ?? []).map(mapSourceClaim),
+  };
+}
+
 /**
  * Send a message to `/api/chat` and return the current JSON response.
  * Calls `onContent` with the full assistant reply.
@@ -102,8 +222,18 @@ export async function sendMessage(
     throw new Error(`Chat request failed: ${res.status}`);
   }
 
-  const data = await res.json() as { content: string; sources: Source[] };
+  const data = await res.json() as { content: string; sources: Array<Record<string, unknown>> };
   onContent(data.content);
-  onSources(data.sources ?? []);
+  onSources((data.sources ?? []).map((source) => ({
+    sourceId: (source.source_id as string | undefined) ?? undefined,
+    title: source.title as string,
+    url: (source.url as string | null) ?? null,
+    author: (source.author as string | null) ?? null,
+    score: source.score as number,
+    publishedAt: (source.published_at as string | null) ?? null,
+    kind: (source.kind as string | null) ?? null,
+    tier: (source.tier as string | null) ?? null,
+    publisher: (source.publisher as string | null) ?? null,
+  })));
   onDone();
 }

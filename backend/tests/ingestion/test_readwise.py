@@ -31,6 +31,7 @@ class FakeSourcesTable:
         self._mode: str | None = None
         self._pending_insert_payload: dict | None = None
         self._pending_update_payload: dict | None = None
+        self._next_insert_id = 1
 
     def select(self, _columns: str) -> "FakeSourcesTable":
         self._mode = "select"
@@ -57,10 +58,24 @@ class FakeSourcesTable:
     def execute(self) -> SimpleNamespace:
         if self._mode == "select":
             if self._selected_readwise_id is not None:
-                exists = self._selected_readwise_id in self._existing_readwise_ids
-                result = [{"id": "existing-source-id"}] if exists else []
+                row = next(
+                    (row for row in self._source_rows if row.get("readwise_id") == self._selected_readwise_id),
+                    None,
+                )
+                if row is not None:
+                    result = [row]
+                else:
+                    exists = self._selected_readwise_id in self._existing_readwise_ids
+                    result = [{"id": "existing-source-id"}] if exists else []
                 self._selected_readwise_id = None
                 return SimpleNamespace(data=result)
+            if self._selected_id is not None:
+                row = next(
+                    (row for row in self._source_rows if row.get("id") == self._selected_id),
+                    None,
+                )
+                self._selected_id = None
+                return SimpleNamespace(data=[row] if row is not None else [])
             return SimpleNamespace(data=self._source_rows)
 
         if self._mode == "insert":
@@ -72,7 +87,11 @@ class FakeSourcesTable:
                     "\"sources_readwise_id_key\"', 'code': '23505'}"
                 )
             self.inserted_rows.append(self._pending_insert_payload)
-            return SimpleNamespace(data=[])
+            inserted_id = f"inserted-source-{self._next_insert_id}"
+            self._next_insert_id += 1
+            self._existing_readwise_ids.add(readwise_id)
+            self._source_rows.append({"id": inserted_id, **self._pending_insert_payload})
+            return SimpleNamespace(data=[{"id": inserted_id}])
 
         if self._mode == "update":
             assert self._pending_update_payload is not None
@@ -96,9 +115,20 @@ class FakeChunksTable:
         self._mode: str | None = None
         self._range_start: int | None = None
         self._range_end: int | None = None
+        self._selected_source_id: str | None = None
+        self.deleted_source_ids: list[str] = []
 
     def select(self, _columns: str) -> "FakeChunksTable":
         self._mode = "select"
+        return self
+
+    def delete(self) -> "FakeChunksTable":
+        self._mode = "delete"
+        return self
+
+    def eq(self, column: str, value: str) -> "FakeChunksTable":
+        assert column == "source_id"
+        self._selected_source_id = value
         return self
 
     def range(self, start: int, end: int) -> "FakeChunksTable":
@@ -118,6 +148,15 @@ class FakeChunksTable:
                 self._chunk_rows = []
                 return SimpleNamespace(data=page)
             return SimpleNamespace(data=self._chunk_rows)
+        if self._mode == "delete":
+            assert self._selected_source_id is not None
+            self.deleted_source_ids.append(self._selected_source_id)
+            self._chunk_rows = [
+                row for row in self._chunk_rows
+                if row.get("source_id") != self._selected_source_id
+            ]
+            self._selected_source_id = None
+            return SimpleNamespace(data=[])
         raise AssertionError("Unexpected execute() call without select().")
 
 
@@ -173,26 +212,58 @@ class FakeReadwiseClient(AbstractContextManager):
         return FakeReadwiseResponse(payload)
 
 
+def build_article(**overrides) -> ReadwiseArticle:
+    payload = {
+        "readwise_id": "article-id",
+        "title": "Article",
+        "author": "Author",
+        "url": "https://example.com/article",
+        "published_at": "2026-03-23",
+        "text": "This article has enough text to be stored and chunked safely.",
+        "ingested_at": "2026-03-23T00:00:00Z",
+        "kind": "article",
+        "tier": "analysis",
+        "publisher": "example.com",
+        "remote_updated_at": "2026-03-23T00:00:00Z",
+        "parent_readwise_id": None,
+        "thread_key": None,
+        "language": "en",
+        "metadata": {"text_source": "content"},
+        "checksum": "checksum-1",
+    }
+    payload.update(overrides)
+    return ReadwiseArticle(**payload)
+
+
 def test_store_articles_persists_source_embedding_only_for_new_articles():
-    existing_article = ReadwiseArticle(
+    existing_article = build_article(
         readwise_id="existing-id",
         title="Existing",
-        author="Author",
         url="https://example.com/existing",
         published_at="2026-03-01",
         text="Existing article text that should be skipped because it already exists.",
-        ingested_at="2026-03-23T00:00:00Z",
+        checksum="existing-checksum",
     )
-    new_article = ReadwiseArticle(
+    new_article = build_article(
         readwise_id="new-id",
         title="New",
-        author="Author",
         url="https://example.com/new",
         published_at="2026-03-02",
         text="New article text that is long enough to generate a whole-source embedding.",
-        ingested_at="2026-03-23T00:00:00Z",
+        checksum="new-checksum",
     )
-    db = FakeDB(existing_readwise_ids={"existing-id"})
+    db = FakeDB(
+        existing_readwise_ids={"existing-id"},
+        source_rows=[
+            {
+                "id": "existing-source-id",
+                "readwise_id": existing_article.readwise_id,
+                "raw_text": existing_article.text,
+                "checksum": existing_article.checksum,
+                "remote_updated_at": existing_article.remote_updated_at,
+            }
+        ],
+    )
     embed_provider = MagicMock()
     embed_provider.embed.return_value = [[0.1, 0.2, 0.3]]
 
@@ -212,7 +283,19 @@ def test_store_articles_persists_source_embedding_only_for_new_articles():
             "url": new_article.url,
             "published_at": new_article.published_at,
             "ingested_at": new_article.ingested_at,
+            "updated_at": new_article.ingested_at,
             "readwise_id": new_article.readwise_id,
+            "external_id": new_article.readwise_id,
+            "source_type": "readwise",
+            "kind": new_article.kind,
+            "tier": new_article.tier,
+            "publisher": new_article.publisher,
+            "remote_updated_at": new_article.remote_updated_at,
+            "parent_source_id": None,
+            "thread_key": new_article.thread_key,
+            "language": new_article.language,
+            "metadata": new_article.metadata,
+            "checksum": new_article.checksum,
             "raw_text": new_article.text,
             "source_embedding": [0.1, 0.2, 0.3],
         }
@@ -236,6 +319,8 @@ def test_fetch_all_articles_uses_html_content_when_plain_content_is_missing(monk
                         "title": "HTML only article",
                         "author": "Author",
                         "url": "https://read.readwise.io/read/html-only-id",
+                        "source_url": "https://example.com/html-only",
+                        "site_name": "Example.com",
                         "published_date": "2026-03-23",
                         "content": None,
                         "html_content": html_body,
@@ -257,20 +342,22 @@ def test_fetch_all_articles_uses_html_content_when_plain_content_is_missing(monk
     assert len(articles) == 1
     assert articles[0].readwise_id == "html-only-id"
     assert articles[0].title == "HTML only article"
+    assert articles[0].kind == "article"
+    assert articles[0].tier == "analysis"
+    assert articles[0].publisher == "Example.com"
+    assert articles[0].metadata["text_source"] == "html_content"
     assert "This is a long article body" in articles[0].text
     assert "<p>" not in articles[0].text
 
 
 def test_store_articles_truncates_long_source_text_before_embedding():
     long_text = "token " * (MAX_SOURCE_EMBEDDING_TOKENS + 500)
-    article = ReadwiseArticle(
+    article = build_article(
         readwise_id="long-id",
         title="Long article",
-        author="Author",
         url="https://example.com/long",
-        published_at="2026-03-23",
         text=long_text,
-        ingested_at="2026-03-23T00:00:00Z",
+        checksum="long-checksum",
     )
     db = FakeDB(existing_readwise_ids=set())
     embed_provider = MagicMock()
@@ -284,14 +371,12 @@ def test_store_articles_truncates_long_source_text_before_embedding():
 
 
 def test_store_articles_treats_duplicate_insert_race_as_skipped():
-    article = ReadwiseArticle(
+    article = build_article(
         readwise_id="racy-id",
         title="Race",
-        author="Author",
         url="https://example.com/race",
-        published_at="2026-03-23",
         text="This article is long enough to make it through the ingestion filter.",
-        ingested_at="2026-03-23T00:00:00Z",
+        checksum="racy-checksum",
     )
     db = FakeDB(existing_readwise_ids=set(), duplicate_on_insert_ids={"racy-id"})
     embed_provider = MagicMock()
@@ -302,6 +387,56 @@ def test_store_articles_treats_duplicate_insert_race_as_skipped():
     assert new_count == 0
     assert skipped_count == 1
     assert db.sources.inserted_rows == []
+
+
+def test_store_articles_updates_existing_source_when_checksum_changes():
+    existing_row = {
+        "id": "existing-source-id",
+        "readwise_id": "updated-id",
+        "raw_text": "Old source text.",
+        "checksum": "old-checksum",
+        "remote_updated_at": "2026-03-20T00:00:00Z",
+    }
+    article = build_article(
+        readwise_id="updated-id",
+        text="Updated source text that should trigger a refresh.",
+        remote_updated_at="2026-03-23T00:00:00Z",
+        checksum="new-checksum",
+    )
+    db = FakeDB(existing_readwise_ids={"updated-id"}, source_rows=[existing_row], chunk_rows=[{"source_id": "existing-source-id"}])
+    embed_provider = MagicMock()
+    embed_provider.embed.return_value = [[0.9, 0.8, 0.7]]
+
+    new_count, skipped_count, source_ids = store_articles([article], db, embed_provider=embed_provider)
+
+    assert new_count == 0
+    assert skipped_count == 1
+    assert source_ids == ["existing-source-id"]
+    assert db.sources.updated_rows == [
+        {
+            "id": "existing-source-id",
+            "title": article.title,
+            "author": article.author,
+            "url": article.url,
+            "published_at": article.published_at,
+            "ingested_at": article.ingested_at,
+            "updated_at": article.ingested_at,
+            "readwise_id": article.readwise_id,
+            "external_id": article.readwise_id,
+            "source_type": "readwise",
+            "kind": article.kind,
+            "tier": article.tier,
+            "publisher": article.publisher,
+            "remote_updated_at": article.remote_updated_at,
+            "parent_source_id": None,
+            "thread_key": article.thread_key,
+            "language": article.language,
+            "metadata": article.metadata,
+            "checksum": article.checksum,
+            "raw_text": article.text,
+            "source_embedding": [0.9, 0.8, 0.7],
+        }
+    ]
 
 
 def test_backfill_missing_source_embeddings_repairs_only_null_rows():

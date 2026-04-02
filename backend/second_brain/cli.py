@@ -216,6 +216,30 @@ def backfill_source_embeddings(
     )
 
 
+@app.command("analyze-source")
+def analyze_source_command(source_id: str) -> None:
+    """
+    Extract entities, claims, evidence, and links for one stored source.
+
+    This is Phase 2's rerunnable, source-scoped analysis entrypoint.
+    """
+    from second_brain.analysis.extraction import analyze_source
+    from second_brain.db import get_db_client
+    from second_brain.providers.llm import get_llm_provider
+
+    console.print(f"[bold]Analyzing source {source_id}...[/bold]")
+    db = get_db_client()
+    llm = get_llm_provider()
+    result = analyze_source(source_id, db, llm)
+    console.print(
+        f"[bold green]Analysis complete.[/bold green] "
+        f"{result['entity_count']} entities, "
+        f"{result['claim_count']} claims, "
+        f"{result['evidence_count']} evidence rows, "
+        f"{result['link_count']} links."
+    )
+
+
 @app.command("repair-chunks")
 def repair_chunks(
     limit: Optional[int] = typer.Option(

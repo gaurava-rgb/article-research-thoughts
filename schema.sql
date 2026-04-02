@@ -7,22 +7,57 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- =============================================================================
--- 1. sources: one row per Readwise article
---    readwise_id ensures we never ingest the same article twice
+-- 1. sources: one row per saved source artifact
+--    `readwise_id` remains for backward compatibility with existing rows.
 -- =============================================================================
 CREATE TABLE sources (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  readwise_id  TEXT        UNIQUE NOT NULL,          -- Readwise article ID for deduplication
+  readwise_id  TEXT        UNIQUE,                   -- legacy Readwise identifier
+  external_id  TEXT,
   title        TEXT        NOT NULL,
   author       TEXT,
   url          TEXT,
-  source_type  TEXT        NOT NULL DEFAULT 'readwise_reader',
+  source_type  TEXT        NOT NULL DEFAULT 'readwise',
+  kind         TEXT        NOT NULL DEFAULT 'article',
+  tier         TEXT        NOT NULL DEFAULT 'analysis',
+  publisher    TEXT,
   published_at TIMESTAMPTZ,
+  remote_updated_at TIMESTAMPTZ,
+  parent_source_id UUID REFERENCES sources(id) ON DELETE CASCADE,
+  thread_key   TEXT,
+  language     TEXT        NOT NULL DEFAULT 'en',
   ingested_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  metadata     JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  checksum     TEXT,
   raw_text     TEXT,                                 -- full article text for full-text search
   source_embedding vector(1536)                      -- one whole-source vector for topic work
 );
+
+CREATE UNIQUE INDEX sources_source_type_external_id_idx
+  ON sources (source_type, external_id)
+  WHERE external_id IS NOT NULL;
+
+CREATE INDEX sources_kind_idx
+  ON sources (kind);
+
+CREATE INDEX sources_tier_idx
+  ON sources (tier);
+
+CREATE INDEX sources_published_at_idx
+  ON sources (published_at DESC);
+
+CREATE INDEX sources_parent_source_id_idx
+  ON sources (parent_source_id);
+
+CREATE INDEX sources_thread_key_idx
+  ON sources (thread_key);
+
+CREATE INDEX sources_publisher_idx
+  ON sources (publisher);
+
+CREATE INDEX sources_metadata_gin_idx
+  ON sources USING gin (metadata);
 
 -- =============================================================================
 -- 2. topics: auto-assigned clusters (populated in Phase 3 — Clustering)
@@ -56,11 +91,33 @@ CREATE TABLE chunks (
   id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
   source_id   UUID    NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   chunk_index INTEGER NOT NULL,           -- position of this chunk within its source (0-based)
+  kind        TEXT    NOT NULL DEFAULT 'chunk',
+  section_label TEXT,
+  speaker     TEXT,
+  page_number INTEGER,
+  start_char  INTEGER,
+  end_char    INTEGER,
   content     TEXT    NOT NULL,
   token_count INTEGER,
   embedding   vector(1536),              -- text-embedding-3-small = 1536 dimensions
+  metadata    JSONB   NOT NULL DEFAULT '{}'::jsonb,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX chunks_source_id_chunk_index_idx
+  ON chunks (source_id, chunk_index);
+
+CREATE INDEX chunks_kind_idx
+  ON chunks (kind);
+
+CREATE INDEX chunks_speaker_idx
+  ON chunks (speaker);
+
+CREATE INDEX chunks_section_label_idx
+  ON chunks (section_label);
+
+CREATE INDEX chunks_metadata_gin_idx
+  ON chunks USING gin (metadata);
 
 -- IVFFlat index for fast approximate nearest-neighbor vector search
 -- lists=100 is suitable for up to ~1M vectors; tune higher for larger corpora
@@ -70,7 +127,180 @@ CREATE INDEX ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists =
 CREATE INDEX ON chunks USING gin (to_tsvector('english', content));
 
 -- =============================================================================
--- 5. conversations: chat sessions between the user and the second brain
+-- 5. processing_runs: ingestion / analysis provenance
+-- =============================================================================
+CREATE TABLE processing_runs (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_type       TEXT NOT NULL,
+  status         TEXT NOT NULL DEFAULT 'running',
+  model          TEXT,
+  prompt_version TEXT,
+  code_version   TEXT,
+  started_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at    TIMESTAMPTZ,
+  metadata       JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX processing_runs_run_type_idx
+  ON processing_runs (run_type, started_at DESC);
+
+-- =============================================================================
+-- 6. entities: durable analyst primitives extracted from sources
+-- =============================================================================
+CREATE TABLE entities (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  canonical_name TEXT NOT NULL,
+  entity_type    TEXT NOT NULL,
+  ticker         TEXT,
+  metadata       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entity_type, canonical_name)
+);
+
+CREATE INDEX entities_canonical_name_idx
+  ON entities (canonical_name);
+
+CREATE INDEX entities_entity_type_idx
+  ON entities (entity_type);
+
+CREATE TABLE entity_aliases (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id   UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  alias       TEXT NOT NULL,
+  alias_type  TEXT NOT NULL DEFAULT 'name',
+  confidence  REAL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entity_id, alias)
+);
+
+CREATE INDEX entity_aliases_alias_idx
+  ON entity_aliases (alias);
+
+CREATE TABLE source_entities (
+  source_id      UUID NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  entity_id      UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  role           TEXT NOT NULL DEFAULT 'mentioned',
+  mention_count  INTEGER,
+  salience       REAL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (source_id, entity_id, role)
+);
+
+CREATE INDEX source_entities_entity_idx
+  ON source_entities (entity_id, source_id);
+
+CREATE TABLE lenses (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug        TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  description TEXT
+);
+
+INSERT INTO lenses (slug, name, description) VALUES
+  ('business-model', 'Business Model', 'Revenue model, margins, pricing, and monetization.'),
+  ('distribution', 'Distribution', 'Default access, channel power, bundling, and go-to-market.'),
+  ('platform', 'Platform Power', 'OS, ecosystem, control points, complements, and APIs.'),
+  ('org-design', 'Org Design', 'Management structure, incentives, and operating model.'),
+  ('supply-chain', 'Supply Chain', 'Capacity, manufacturing, hardware dependencies, and logistics.'),
+  ('regulation', 'Regulation', 'Antitrust, policy, court rulings, and government action.'),
+  ('security', 'Security', 'Security posture, trust boundaries, and risk containment.'),
+  ('aggregation', 'Aggregation', 'Demand ownership, supplier leverage, and aggregation dynamics.'),
+  ('bundling', 'Bundling', 'Package design, suite leverage, and cross-subsidy effects.'),
+  ('capex', 'CapEx', 'Infrastructure spending, utilization, and fixed-cost leverage.')
+ON CONFLICT (slug) DO NOTHING;
+
+CREATE TABLE claims (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_id           UUID NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  subject_entity_id   UUID REFERENCES entities(id) ON DELETE SET NULL,
+  object_entity_id    UUID REFERENCES entities(id) ON DELETE SET NULL,
+  claim_type          TEXT NOT NULL,
+  modality            TEXT NOT NULL DEFAULT 'reported',
+  stance              TEXT,
+  claim_text          TEXT NOT NULL,
+  normalized_claim    TEXT,
+  event_at            TIMESTAMPTZ,
+  event_end_at        TIMESTAMPTZ,
+  confidence          REAL,
+  importance          REAL,
+  extraction_run_id   UUID REFERENCES processing_runs(id) ON DELETE SET NULL,
+  metadata            JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX claims_source_id_idx
+  ON claims (source_id);
+
+CREATE INDEX claims_subject_entity_id_idx
+  ON claims (subject_entity_id, event_at DESC);
+
+CREATE INDEX claims_object_entity_id_idx
+  ON claims (object_entity_id, event_at DESC);
+
+CREATE INDEX claims_claim_type_idx
+  ON claims (claim_type);
+
+CREATE INDEX claims_event_at_idx
+  ON claims (event_at DESC);
+
+CREATE INDEX claims_modality_idx
+  ON claims (modality);
+
+CREATE INDEX claims_metadata_gin_idx
+  ON claims USING gin (metadata);
+
+CREATE TABLE claim_lenses (
+  claim_id    UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  lens_id     UUID NOT NULL REFERENCES lenses(id) ON DELETE CASCADE,
+  weight      REAL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (claim_id, lens_id)
+);
+
+CREATE INDEX claim_lenses_lens_id_idx
+  ON claim_lenses (lens_id, claim_id);
+
+CREATE TABLE claim_evidence (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  claim_id      UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  source_id     UUID NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  chunk_id      UUID REFERENCES chunks(id) ON DELETE SET NULL,
+  evidence_text TEXT,
+  start_char    INTEGER,
+  end_char      INTEGER,
+  confidence    REAL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX claim_evidence_claim_id_idx
+  ON claim_evidence (claim_id);
+
+CREATE INDEX claim_evidence_source_id_idx
+  ON claim_evidence (source_id);
+
+CREATE INDEX claim_evidence_chunk_id_idx
+  ON claim_evidence (chunk_id);
+
+CREATE TABLE claim_links (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_claim_id  UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  to_claim_id    UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  link_type      TEXT NOT NULL,
+  confidence     REAL,
+  explanation    TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (from_claim_id, to_claim_id, link_type)
+);
+
+CREATE INDEX claim_links_from_idx
+  ON claim_links (from_claim_id, link_type);
+
+CREATE INDEX claim_links_to_idx
+  ON claim_links (to_claim_id, link_type);
+
+-- =============================================================================
+-- 7. conversations: chat sessions between the user and the second brain
 -- =============================================================================
 CREATE TABLE conversations (
   id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,7 +310,7 @@ CREATE TABLE conversations (
 );
 
 -- =============================================================================
--- 6. messages: individual turns (user questions and assistant responses)
+-- 8. messages: individual turns (user questions and assistant responses)
 --    role must be 'user' or 'assistant' — enforced via CHECK constraint
 -- =============================================================================
 CREATE TABLE messages (
@@ -92,7 +322,7 @@ CREATE TABLE messages (
 );
 
 -- =============================================================================
--- 7. insights: proactively detected patterns, contradictions, weekly digests
+-- 9. insights: proactively detected patterns, contradictions, weekly digests
 --    Populated in Phase 5 — Proactive Insights. 'seen' tracks if user has viewed it.
 -- =============================================================================
 CREATE TABLE insights (
@@ -131,7 +361,10 @@ RETURNS TABLE (
   title         text,
   author        text,
   url           text,
-  published_at  timestamptz
+  published_at  timestamptz,
+  kind          text,
+  tier          text,
+  publisher     text
 )
 LANGUAGE sql STABLE
 AS $$
@@ -154,7 +387,10 @@ AS $$
     s.title,
     s.author,
     s.url,
-    s.published_at
+    s.published_at,
+    s.kind,
+    s.tier,
+    s.publisher
   FROM chunks c
   JOIN sources s ON s.id = c.source_id
   WHERE

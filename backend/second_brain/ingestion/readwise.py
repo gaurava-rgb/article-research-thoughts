@@ -26,9 +26,12 @@ Why httpx.Client (synchronous)?
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from urllib.parse import urlparse
 from typing import TYPE_CHECKING, Optional
 
 import httpx
@@ -60,6 +63,15 @@ class ReadwiseArticle:
     published_at: Optional[str] # ISO date string from the API (e.g. "2024-01-15")
     text: str                   # Plain text content — used for chunking
     ingested_at: str            # ISO timestamp set at fetch time (UTC)
+    kind: str                   # Coarse artifact classification
+    tier: str                   # Coarse analytical tier
+    publisher: Optional[str]    # Publisher / site_name when available
+    remote_updated_at: Optional[str]
+    parent_readwise_id: Optional[str]
+    thread_key: Optional[str]
+    language: str
+    metadata: dict[str, object]
+    checksum: str
 
 
 # =============================================================================
@@ -76,6 +88,38 @@ MIN_TEXT_LENGTH = 50
 # budget for text-embedding-3-small compatible providers.
 MAX_SOURCE_EMBEDDING_TOKENS = 8000
 _ENCODING_NAME = "cl100k_base"
+
+_CATEGORY_KIND_MAP = {
+    "article": "article",
+    "rss": "article",
+    "email": "email",
+    "highlight": "highlight",
+    "note": "note",
+    "pdf": "document",
+    "epub": "book",
+    "tweet": "thread",
+    "video": "video",
+}
+
+_SOCIAL_DOMAINS = {
+    "facebook.com",
+    "instagram.com",
+    "linkedin.com",
+    "news.ycombinator.com",
+    "reddit.com",
+    "twitter.com",
+    "x.com",
+}
+
+_REPORTING_DOMAINS = {
+    "axios.com",
+    "bloomberg.com",
+    "ft.com",
+    "reuters.com",
+    "theinformation.com",
+    "theverge.com",
+    "wsj.com",
+}
 
 
 class _HTMLToTextParser(HTMLParser):
@@ -125,6 +169,143 @@ def _extract_article_text(result: dict) -> tuple[str, str]:
     return "", "missing"
 
 
+def _normalize_domain(url: str | None) -> str | None:
+    if not url:
+        return None
+    hostname = urlparse(url).hostname
+    if not hostname:
+        return None
+    return hostname.lower().removeprefix("www.")
+
+
+def _normalize_tags(raw_tags: object) -> list[str]:
+    if isinstance(raw_tags, list):
+        return [str(tag) for tag in raw_tags if str(tag).strip()]
+    if isinstance(raw_tags, dict):
+        return sorted(str(tag) for tag in raw_tags.keys() if str(tag).strip())
+    return []
+
+
+def _derive_publisher(result: dict, source_url: str | None) -> str | None:
+    if site_name := result.get("site_name"):
+        return str(site_name)
+    if domain := _normalize_domain(source_url):
+        return domain
+    return None
+
+
+def _infer_kind(result: dict, source_url: str | None) -> str:
+    category = str(result.get("category") or "").lower()
+    title = str(result.get("title") or "").lower()
+    domain = _normalize_domain(source_url)
+
+    if "earnings call" in title:
+        return "earnings_call"
+    if "transcript" in title:
+        return "transcript"
+    if domain == "sec.gov":
+        return "filing"
+    if inferred := _CATEGORY_KIND_MAP.get(category):
+        return inferred
+    if domain in _SOCIAL_DOMAINS or "/status/" in (source_url or ""):
+        return "thread"
+    return "article"
+
+
+def _infer_tier(result: dict, source_url: str | None, kind: str) -> str:
+    category = str(result.get("category") or "").lower()
+    title = str(result.get("title") or "").lower()
+    domain = _normalize_domain(source_url) or ""
+
+    if category in {"highlight", "note"}:
+        return "personal"
+    if category == "tweet" or domain in _SOCIAL_DOMAINS:
+        return "social"
+    if domain == "sec.gov" or domain.startswith("investor.") or domain.startswith("ir."):
+        return "primary"
+    if kind in {"earnings_call", "filing", "transcript"}:
+        return "primary"
+    if "press release" in title or "shareholder letter" in title:
+        return "primary"
+    if domain in _REPORTING_DOMAINS:
+        return "reporting"
+    return "analysis"
+
+
+def _derive_thread_key(readwise_id: str, parent_readwise_id: str | None, kind: str) -> str | None:
+    if parent_readwise_id:
+        return parent_readwise_id
+    if kind == "thread":
+        return readwise_id
+    return None
+
+
+def _clean_metadata(metadata: dict[str, object]) -> dict[str, object]:
+    cleaned: dict[str, object] = {}
+    for key, value in metadata.items():
+        if value is None:
+            continue
+        if value == "":
+            continue
+        if value == []:
+            continue
+        if value == {}:
+            continue
+        cleaned[key] = value
+    return cleaned
+
+
+def _build_source_metadata(result: dict, text_source: str, source_url: str | None) -> dict[str, object]:
+    return _clean_metadata({
+        "reader_url": result.get("url"),
+        "domain": _normalize_domain(source_url),
+        "readwise_category": result.get("category"),
+        "readwise_location": result.get("location"),
+        "readwise_source": result.get("source"),
+        "site_name": result.get("site_name"),
+        "tags": _normalize_tags(result.get("tags")),
+        "summary": result.get("summary"),
+        "notes": result.get("notes"),
+        "word_count": result.get("word_count"),
+        "reading_time": result.get("reading_time"),
+        "reading_progress": result.get("reading_progress"),
+        "first_opened_at": result.get("first_opened_at"),
+        "last_opened_at": result.get("last_opened_at"),
+        "saved_at": result.get("saved_at"),
+        "last_moved_at": result.get("last_moved_at"),
+        "image_url": result.get("image_url"),
+        "parent_readwise_id": result.get("parent_id"),
+        "text_source": text_source,
+    })
+
+
+def _compute_source_checksum(
+    *,
+    title: str,
+    author: str | None,
+    url: str | None,
+    published_at: str | None,
+    text: str,
+    kind: str,
+    tier: str,
+    publisher: str | None,
+    metadata: dict[str, object],
+) -> str:
+    payload = {
+        "title": title,
+        "author": author,
+        "url": url,
+        "published_at": published_at,
+        "text": text,
+        "kind": kind,
+        "tier": tier,
+        "publisher": publisher,
+        "metadata": metadata,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _truncate_for_source_embedding(text: str, max_tokens: int = MAX_SOURCE_EMBEDDING_TOKENS) -> tuple[str, bool]:
     """Trim overly long whole-source text to a safe embedding token limit."""
     enc = tiktoken.get_encoding(_ENCODING_NAME)
@@ -157,6 +338,61 @@ def _is_duplicate_readwise_id_error(exc: Exception) -> bool:
         "sources_readwise_id_key" in message
         or ('"code": "23505"' in message)
         or ("'code': '23505'" in message)
+    )
+
+
+def _resolve_source_id_by_readwise_id(db: "supabase.Client", readwise_id: str | None) -> str | None:
+    if not readwise_id:
+        return None
+    result = (
+        db.table("sources")
+        .select("id")
+        .eq("readwise_id", readwise_id)
+        .execute()
+    )
+    if result.data:
+        return result.data[0]["id"]
+    return None
+
+
+def _build_source_payload(
+    article: ReadwiseArticle,
+    *,
+    source_embedding: list[float] | None,
+    parent_source_id: str | None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "title": article.title,
+        "author": article.author,
+        "url": article.url,
+        "published_at": article.published_at,
+        "ingested_at": article.ingested_at,
+        "updated_at": article.ingested_at,
+        "readwise_id": article.readwise_id,
+        "external_id": article.readwise_id,
+        "source_type": "readwise",
+        "kind": article.kind,
+        "tier": article.tier,
+        "publisher": article.publisher,
+        "remote_updated_at": article.remote_updated_at,
+        "parent_source_id": parent_source_id,
+        "thread_key": article.thread_key,
+        "language": article.language,
+        "metadata": article.metadata,
+        "checksum": article.checksum,
+        "raw_text": article.text,
+    }
+    if source_embedding is not None:
+        payload["source_embedding"] = source_embedding
+    return payload
+
+
+def _source_row_needs_update(existing_row: dict, article: ReadwiseArticle) -> bool:
+    if existing_row.get("checksum"):
+        return existing_row.get("checksum") != article.checksum
+    return (
+        existing_row.get("raw_text") != article.text
+        or existing_row.get("remote_updated_at") != article.remote_updated_at
     )
 
 
@@ -238,7 +474,7 @@ def fetch_all_articles(token: str, updated_after: Optional[str] = None) -> list[
             page_html_fallback = 0
 
             # Map each raw dict to a ReadwiseArticle dataclass
-            ingested_at = datetime.datetime.utcnow().isoformat() + "Z"
+            ingested_at = datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
             for result in results:
                 text, text_source = _extract_article_text(result)
 
@@ -252,16 +488,41 @@ def fetch_all_articles(token: str, updated_after: Optional[str] = None) -> list[
                     html_fallback_total += 1
                     page_html_fallback += 1
 
+                source_url = result.get("source_url") or result.get("url")
+                kind = _infer_kind(result, source_url)
+                tier = _infer_tier(result, source_url, kind)
+                publisher = _derive_publisher(result, source_url)
+                metadata = _build_source_metadata(result, text_source, source_url)
+
                 articles.append(ReadwiseArticle(
                     readwise_id=result["id"],
                     title=result.get("title") or "",
                     author=result.get("author"),
                     # source_url is the original content URL (x.com, substack, etc.)
                     # url is the Readwise Reader wrapper — not useful for citation
-                    url=result.get("source_url") or result.get("url"),
+                    url=source_url,
                     published_at=result.get("published_date"),
                     text=text,
                     ingested_at=ingested_at,
+                    kind=kind,
+                    tier=tier,
+                    publisher=publisher,
+                    remote_updated_at=result.get("updated_at") or result.get("saved_at"),
+                    parent_readwise_id=result.get("parent_id"),
+                    thread_key=_derive_thread_key(result["id"], result.get("parent_id"), kind),
+                    language=str(result.get("language") or "en"),
+                    metadata=metadata,
+                    checksum=_compute_source_checksum(
+                        title=result.get("title") or "",
+                        author=result.get("author"),
+                        url=source_url,
+                        published_at=result.get("published_date"),
+                        text=text,
+                        kind=kind,
+                        tier=tier,
+                        publisher=publisher,
+                        metadata=metadata,
+                    ),
                 ))
                 page_kept += 1
 
@@ -316,7 +577,7 @@ def store_articles(
     articles: list[ReadwiseArticle],
     db: supabase.Client,
     embed_provider: "EmbeddingProvider | None" = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, list[str]]:
     """
     Store new articles into the Supabase `sources` table.
 
@@ -346,13 +607,40 @@ def store_articles(
         # Using .eq() for an exact match on the unique Readwise identifier.
         existing = (
             db.table("sources")
-            .select("id")
+            .select("id, raw_text, checksum, remote_updated_at")
             .eq("readwise_id", article.readwise_id)
             .execute()
         )
 
+        parent_source_id = _resolve_source_id_by_readwise_id(db, article.parent_readwise_id)
+
         if existing.data:
-            # Article already stored — skip to avoid duplicates
+            existing_row = existing.data[0]
+            if _source_row_needs_update(existing_row, article):
+                raw_text_changed = existing_row.get("raw_text") != article.text
+                source_embedding = None
+                if embed_provider is not None and raw_text_changed:
+                    source_embedding = _embed_source_text(
+                        article.text,
+                        article.readwise_id,
+                        embed_provider,
+                    )
+
+                (
+                    db.table("sources")
+                    .update(
+                        _build_source_payload(
+                            article,
+                            source_embedding=source_embedding,
+                            parent_source_id=parent_source_id,
+                        )
+                    )
+                    .eq("id", existing_row["id"])
+                    .execute()
+                )
+                if raw_text_changed:
+                    new_source_ids.append(existing_row["id"])
+
             skipped_count += 1
             continue
 
@@ -369,18 +657,18 @@ def store_articles(
         # Insert the new article into sources.
         # Supabase accepts ISO date strings directly for timestamp/date columns.
         try:
-            result = db.table("sources").insert({
-                "title": article.title,
-                "author": article.author,
-                "url": article.url,
-                "published_at": article.published_at,
-                "ingested_at": article.ingested_at,
-                "readwise_id": article.readwise_id,
-                "raw_text": article.text,
-                "source_embedding": source_embedding,
-            }).execute()
+            result = db.table("sources").insert(
+                _build_source_payload(
+                    article,
+                    source_embedding=source_embedding,
+                    parent_source_id=parent_source_id,
+                )
+            ).execute()
             if result.data:
                 new_source_ids.append(result.data[0]["id"])
+            else:
+                if inserted_id := _resolve_source_id_by_readwise_id(db, article.readwise_id):
+                    new_source_ids.append(inserted_id)
         except Exception as exc:
             if _is_duplicate_readwise_id_error(exc):
                 logger.info(
@@ -470,6 +758,7 @@ def chunk_new_sources(
 
     total_chunks = 0
     for source_id in source_ids:
+        db.table("chunks").delete().eq("source_id", source_id).execute()
         row = db.table("sources").select("id, readwise_id, raw_text").eq("id", source_id).execute().data
         if not row:
             continue

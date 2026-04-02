@@ -51,8 +51,15 @@ class Chunk:
     """
     source_id: str      # UUID from sources table (foreign key)
     chunk_index: int    # 0, 1, 2 ... within this article
+    kind: str           # retrieval/evidence segment type
+    section_label: str | None
+    speaker: str | None
+    page_number: int | None
+    start_char: int | None
+    end_char: int | None
     content: str        # The text of this chunk
     token_count: int    # Actual token count (via tiktoken)
+    metadata: dict[str, object]
 
 
 # =============================================================================
@@ -129,6 +136,7 @@ def chunk_text(
 
     chunks: list[Chunk] = []
     chunk_index = 0
+    search_hint = 0
 
     # Current accumulation buffer (list of sentence strings)
     buffer: list[str] = []
@@ -138,22 +146,44 @@ def chunk_text(
     # for overlap. Stored as a decoded string for simplicity.
     overlap_seed: str = ""
 
+    def append_chunk(chunk_text_content: str, overlap_prefix: str) -> None:
+        nonlocal chunk_index, search_hint
+
+        chunk_tokens = len(enc.encode(chunk_text_content))
+        if chunk_tokens < MIN_CHUNK_TOKENS:
+            return
+
+        span_start = text.find(chunk_text_content, max(search_hint - len(overlap_prefix), 0))
+        if span_start == -1:
+            span_start = text.find(chunk_text_content)
+        span_end = span_start + len(chunk_text_content) if span_start != -1 else None
+
+        chunks.append(
+            Chunk(
+                source_id=source_id,
+                chunk_index=chunk_index,
+                kind="chunk",
+                section_label=None,
+                speaker=None,
+                page_number=None,
+                start_char=span_start if span_start != -1 else None,
+                end_char=span_end,
+                content=chunk_text_content,
+                token_count=chunk_tokens,
+                metadata={},
+            )
+        )
+        chunk_index += 1
+        if span_end is not None:
+            search_hint = max(span_end - len(overlap_prefix), 0)
+
     for sentence in sentences:
         sentence_tokens = len(enc.encode(sentence))
 
         # If adding this sentence would exceed the target, flush the buffer
         if buffer_tokens + sentence_tokens > target_tokens and buffer:
             chunk_text_content = overlap_seed + " ".join(buffer) if overlap_seed else " ".join(buffer)
-            chunk_tokens = len(enc.encode(chunk_text_content))
-
-            if chunk_tokens >= MIN_CHUNK_TOKENS:
-                chunks.append(Chunk(
-                    source_id=source_id,
-                    chunk_index=chunk_index,
-                    content=chunk_text_content,
-                    token_count=chunk_tokens,
-                ))
-                chunk_index += 1
+            append_chunk(chunk_text_content, overlap_seed)
 
             # Compute the overlap seed: take the last overlap_tokens tokens
             # from the chunk we just saved and decode back to text.
@@ -174,15 +204,7 @@ def chunk_text(
     # Flush the remaining buffer as a final chunk
     if buffer:
         chunk_text_content = overlap_seed + " ".join(buffer) if overlap_seed else " ".join(buffer)
-        chunk_tokens = len(enc.encode(chunk_text_content))
-
-        if chunk_tokens >= MIN_CHUNK_TOKENS:
-            chunks.append(Chunk(
-                source_id=source_id,
-                chunk_index=chunk_index,
-                content=chunk_text_content,
-                token_count=chunk_tokens,
-            ))
+        append_chunk(chunk_text_content, overlap_seed)
 
     return chunks
 
@@ -234,9 +256,16 @@ def store_chunks_with_embeddings(
         db.table("chunks").insert({
             "source_id": chunk.source_id,
             "chunk_index": chunk.chunk_index,
+            "kind": chunk.kind,
+            "section_label": chunk.section_label,
+            "speaker": chunk.speaker,
+            "page_number": chunk.page_number,
+            "start_char": chunk.start_char,
+            "end_char": chunk.end_char,
             "content": chunk.content,
             "token_count": chunk.token_count,
             "embedding": embedding,
+            "metadata": chunk.metadata,
         }).execute()
         inserted_count += 1
 
