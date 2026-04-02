@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, MessageSquare, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, FileSearch, MessageSquare, Sparkles } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -73,6 +73,13 @@ export function ConvSidebar({ currentConversationId }: ConvSidebarProps) {
         >
           <MessageSquare className="h-4 w-4" aria-hidden />
           New Chat
+        </Link>
+        <Link
+          href="/entities"
+          className="mt-2 flex items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <FileSearch className="h-4 w-4" aria-hidden />
+          Entity Workbench
         </Link>
       </SidebarHeader>
       <SidebarContent>

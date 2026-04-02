@@ -1,4 +1,19 @@
-import type { AnalysisRun, Conversation, Insight, Message, RelatedConversation, Source, SourceAnalysis, SourceClaim, SourceDetail, SourceEntity } from "./types";
+import type {
+  AnalysisRun,
+  Conversation,
+  EntityDirectoryItem,
+  EntityDossier,
+  EntityRelationGroup,
+  EntityTimelineClaim,
+  Insight,
+  Message,
+  RelatedConversation,
+  Source,
+  SourceAnalysis,
+  SourceClaim,
+  SourceDetail,
+  SourceEntity,
+} from "./types";
 
 // Base URL: empty string in production (same-origin via vercel.json rewrites),
 // http://localhost:8000 in development (set via NEXT_PUBLIC_API_URL env var or defaults to "").
@@ -109,6 +124,40 @@ export async function fetchSourceDetail(sourceId: string): Promise<SourceDetail>
   };
 }
 
+export async function fetchEntityDirectory(): Promise<EntityDirectoryItem[]> {
+  const res = await fetch(`${BASE}/api/entities`);
+  if (!res.ok) throw new Error(`Failed to fetch entity directory: ${res.status}`);
+  const data = await res.json() as Array<Record<string, unknown>>;
+  return data.map((entity) => ({
+    id: entity.id as string,
+    canonicalName: entity.canonical_name as string,
+    entityType: entity.entity_type as string,
+    ticker: (entity.ticker as string | null) ?? null,
+    metadata: (entity.metadata as Record<string, unknown>) ?? {},
+    aliases: ((entity.aliases as string[] | undefined) ?? []).map((alias) => String(alias)),
+    aliasCount: (entity.alias_count as number | null) ?? 0,
+    sourceCount: (entity.source_count as number | null) ?? 0,
+    claimCount: (entity.claim_count as number | null) ?? 0,
+    latestTimelineAt: (entity.latest_timeline_at as string | null) ?? null,
+    latestClaimText: (entity.latest_claim_text as string | null) ?? null,
+  }));
+}
+
+export async function fetchEntityDossier(entityId: string): Promise<EntityDossier> {
+  const res = await fetch(`${BASE}/api/entities/${entityId}`);
+  if (!res.ok) throw new Error(`Failed to fetch entity dossier: ${res.status}`);
+  const data = await res.json() as Record<string, unknown>;
+  return {
+    entity: mapSourceEntity(data.entity as Record<string, unknown>),
+    currentThesis: mapEntityCurrentThesis(data.current_thesis as Record<string, unknown>),
+    recentChanges: mapEntityRecentChanges(data.recent_changes as Record<string, unknown>),
+    relationships: ((data.relationships as Array<Record<string, unknown>> | undefined) ?? []).map(
+      mapEntityRelationGroup,
+    ),
+    timeline: ((data.timeline as Array<Record<string, unknown>> | undefined) ?? []).map(mapEntityTimelineClaim),
+  };
+}
+
 function mapAnalysisRun(run: Record<string, unknown>): AnalysisRun {
   return {
     id: run.id as string,
@@ -189,6 +238,97 @@ function mapSourceClaim(claim: Record<string, unknown>): SourceClaim {
       created_at: link.created_at as string,
       target_claim_text: (link.target_claim_text as string | null) ?? null,
     })),
+  };
+}
+
+function mapEntityTimelineClaim(claim: Record<string, unknown>): EntityTimelineClaim {
+  const mappedClaim = mapSourceClaim(claim);
+  return {
+    ...mappedClaim,
+    timelineAt: (claim.timeline_at as string | null) ?? null,
+    entityRole: (claim.entity_role as "subject" | "object" | null) ?? null,
+    counterpartyEntity: claim.counterparty_entity
+      ? mapSourceEntity(claim.counterparty_entity as Record<string, unknown>)
+      : null,
+    source: {
+      id: ((claim.source as Record<string, unknown> | undefined)?.id as string | null) ?? null,
+      title: ((claim.source as Record<string, unknown> | undefined)?.title as string | null) ?? null,
+      url: ((claim.source as Record<string, unknown> | undefined)?.url as string | null) ?? null,
+      sourceType: ((claim.source as Record<string, unknown> | undefined)?.source_type as string | null) ?? null,
+      kind: ((claim.source as Record<string, unknown> | undefined)?.kind as string | null) ?? null,
+      tier: ((claim.source as Record<string, unknown> | undefined)?.tier as string | null) ?? null,
+      publishedAt: ((claim.source as Record<string, unknown> | undefined)?.published_at as string | null) ?? null,
+      ingestedAt: ((claim.source as Record<string, unknown> | undefined)?.ingested_at as string | null) ?? null,
+    },
+    links: ((claim.links as Array<Record<string, unknown>> | undefined) ?? []).map((link) => ({
+      id: link.id as string,
+      direction: link.direction as "incoming" | "outgoing",
+      linkType: link.link_type as string,
+      confidence: (link.confidence as number | null) ?? null,
+      explanation: (link.explanation as string | null) ?? null,
+      createdAt: link.created_at as string,
+      relatedClaimId: link.related_claim_id as string,
+      relatedClaimText: (link.related_claim_text as string | null) ?? null,
+    })),
+    isContradictory: Boolean(claim.is_contradictory),
+    contradictionCount: (claim.contradiction_count as number | null) ?? 0,
+  };
+}
+
+function mapEntityRelationGroup(group: Record<string, unknown>): EntityRelationGroup {
+  return {
+    relationType: group.relation_type as string,
+    label: group.label as string,
+    items: ((group.items as Array<Record<string, unknown>> | undefined) ?? []).map((item) => ({
+      id: item.id as string,
+      direction: item.direction as "incoming" | "outgoing",
+      relationType: item.relation_type as string,
+      confidence: (item.confidence as number | null) ?? null,
+      validFrom: (item.valid_from as string | null) ?? null,
+      validTo: (item.valid_to as string | null) ?? null,
+      metadata: (item.metadata as Record<string, unknown>) ?? {},
+      createdAt: item.created_at as string,
+      counterpartyEntity: item.counterparty_entity
+        ? mapSourceEntity(item.counterparty_entity as Record<string, unknown>)
+        : null,
+      source: item.source
+        ? {
+            id: ((item.source as Record<string, unknown>).id as string | null) ?? null,
+            title: ((item.source as Record<string, unknown>).title as string | null) ?? null,
+            url: ((item.source as Record<string, unknown>).url as string | null) ?? null,
+            sourceType: ((item.source as Record<string, unknown>).source_type as string | null) ?? null,
+            kind: ((item.source as Record<string, unknown>).kind as string | null) ?? null,
+            tier: ((item.source as Record<string, unknown>).tier as string | null) ?? null,
+            publishedAt: ((item.source as Record<string, unknown>).published_at as string | null) ?? null,
+            ingestedAt: ((item.source as Record<string, unknown>).ingested_at as string | null) ?? null,
+          }
+        : null,
+    })),
+  };
+}
+
+function mapEntityCurrentThesis(thesis: Record<string, unknown>) {
+  return {
+    summary: thesis.summary as string,
+    sourceCount: (thesis.source_count as number | null) ?? 0,
+    claimCount: (thesis.claim_count as number | null) ?? 0,
+    topClaims: ((thesis.top_claims as Array<Record<string, unknown>> | undefined) ?? []).map(mapEntityTimelineClaim),
+    dominantLenses: ((thesis.dominant_lenses as Array<Record<string, unknown>> | undefined) ?? []).map((lens) => ({
+      name: lens.name as string,
+      count: lens.count as number,
+    })),
+    claimTypeBreakdown: ((thesis.claim_type_breakdown as Array<Record<string, unknown>> | undefined) ?? []).map((item) => ({
+      claimType: item.claim_type as string,
+      count: item.count as number,
+    })),
+  };
+}
+
+function mapEntityRecentChanges(recentChanges: Record<string, unknown>) {
+  return {
+    summary: recentChanges.summary as string,
+    windowDays: (recentChanges.window_days as number | null) ?? 0,
+    items: ((recentChanges.items as Array<Record<string, unknown>> | undefined) ?? []).map(mapEntityTimelineClaim),
   };
 }
 

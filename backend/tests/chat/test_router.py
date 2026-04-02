@@ -318,3 +318,77 @@ def test_analyze_source_endpoint_returns_completed_payload():
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
     assert response.json()["run_id"] == "run-1"
+
+
+def test_entities_endpoint_returns_entity_directory():
+    """GET /api/entities should expose the Phase 3 entity directory."""
+    from api.index import app
+
+    payload = [
+        {
+            "id": "entity-1",
+            "canonical_name": "Acme",
+            "entity_type": "company",
+            "ticker": "ACME",
+            "metadata": {},
+            "aliases": ["Acme Corp"],
+            "alias_count": 1,
+            "source_count": 2,
+            "claim_count": 3,
+            "latest_timeline_at": "2026-03-27T00:00:00+00:00",
+            "latest_claim_text": "Acme analytics revenue growth is overstated.",
+        }
+    ]
+
+    with (
+        patch.dict(os.environ, TEST_ENV, clear=False),
+        patch("second_brain.db.get_db_client", return_value=MagicMock()),
+        patch("second_brain.analysis.dossier.list_entities", return_value=payload),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/api/entities")
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
+def test_entity_dossier_endpoint_returns_structured_payload():
+    """GET /api/entities/{id} should expose the Phase 3 dossier payload."""
+    from api.index import app
+
+    payload = {
+        "entity": {
+            "id": "entity-1",
+            "canonical_name": "Acme",
+            "entity_type": "company",
+            "ticker": "ACME",
+            "metadata": {},
+            "aliases": [],
+        },
+        "current_thesis": {
+            "summary": "Acme has 3 tracked claims across 2 sources.",
+            "source_count": 2,
+            "claim_count": 3,
+            "top_claims": [],
+            "dominant_lenses": [],
+            "claim_type_breakdown": [],
+        },
+        "recent_changes": {
+            "summary": "2 recent changes tracked for Acme over the last 90 days.",
+            "window_days": 90,
+            "items": [],
+        },
+        "relationships": [],
+        "timeline": [],
+    }
+
+    with (
+        patch.dict(os.environ, TEST_ENV, clear=False),
+        patch("second_brain.db.get_db_client", return_value=MagicMock()),
+        patch("second_brain.analysis.dossier.get_entity_dossier", return_value=payload),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/api/entities/entity-1")
+
+    assert response.status_code == 200
+    assert response.json() == payload

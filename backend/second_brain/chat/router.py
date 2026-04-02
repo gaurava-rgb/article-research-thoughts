@@ -208,6 +208,27 @@ def get_source_detail_endpoint(source_id: str):
     }
 
 
+@router.get("/entities")
+def list_entities_endpoint():
+    """Return the entity directory for the Phase 3 analyst workbench."""
+    from second_brain.analysis.dossier import list_entities
+    from second_brain.db import get_db_client
+
+    return list_entities(get_db_client())
+
+
+@router.get("/entities/{entity_id}")
+def get_entity_dossier_endpoint(entity_id: str):
+    """Return a Phase 3 dossier with timeline, recent changes, and relationships."""
+    from second_brain.analysis.dossier import get_entity_dossier
+    from second_brain.db import get_db_client
+
+    try:
+        return get_entity_dossier(entity_id, get_db_client())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/sources/{source_id}/analyze")
 async def analyze_source_endpoint(source_id: str):
     """Run Phase 2 extraction for a single source and return the stored analysis."""

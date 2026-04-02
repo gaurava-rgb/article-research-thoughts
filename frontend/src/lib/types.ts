@@ -123,6 +123,101 @@ export interface SourceAnalysis {
   claims: SourceClaim[];
 }
 
+export interface EntityDirectoryItem {
+  id: string;
+  canonicalName: string;
+  entityType: string;
+  ticker: string | null;
+  metadata: Record<string, unknown>;
+  aliases: string[];
+  aliasCount: number;
+  sourceCount: number;
+  claimCount: number;
+  latestTimelineAt: string | null;
+  latestClaimText: string | null;
+}
+
+export interface EntityRelationItem {
+  id: string;
+  direction: "incoming" | "outgoing";
+  relationType: string;
+  confidence: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  counterpartyEntity: SourceEntity | null;
+  source: {
+    id: string | null;
+    title: string | null;
+    url: string | null;
+    sourceType: string | null;
+    kind: string | null;
+    tier: string | null;
+    publishedAt: string | null;
+    ingestedAt: string | null;
+  } | null;
+}
+
+export interface EntityRelationGroup {
+  relationType: string;
+  label: string;
+  items: EntityRelationItem[];
+}
+
+export interface EntityTimelineLink {
+  id: string;
+  direction: "incoming" | "outgoing";
+  linkType: string;
+  confidence: number | null;
+  explanation: string | null;
+  createdAt: string;
+  relatedClaimId: string;
+  relatedClaimText: string | null;
+}
+
+export type EntityTimelineClaim = Omit<SourceClaim, "links"> & {
+  timelineAt: string | null;
+  entityRole: "subject" | "object" | null;
+  counterpartyEntity: SourceEntity | null;
+  source: {
+    id: string | null;
+    title: string | null;
+    url: string | null;
+    sourceType: string | null;
+    kind: string | null;
+    tier: string | null;
+    publishedAt: string | null;
+    ingestedAt: string | null;
+  };
+  links: EntityTimelineLink[];
+  isContradictory: boolean;
+  contradictionCount: number;
+}
+
+export interface EntityCurrentThesis {
+  summary: string;
+  sourceCount: number;
+  claimCount: number;
+  topClaims: EntityTimelineClaim[];
+  dominantLenses: Array<{ name: string; count: number }>;
+  claimTypeBreakdown: Array<{ claimType: string; count: number }>;
+}
+
+export interface EntityRecentChanges {
+  summary: string;
+  windowDays: number;
+  items: EntityTimelineClaim[];
+}
+
+export interface EntityDossier {
+  entity: SourceEntity;
+  currentThesis: EntityCurrentThesis;
+  recentChanges: EntityRecentChanges;
+  relationships: EntityRelationGroup[];
+  timeline: EntityTimelineClaim[];
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
