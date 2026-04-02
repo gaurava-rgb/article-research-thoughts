@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { fetchMessages } from "@/lib/api";
 import { ChatPanel } from "@/components/ChatPanel";
 import { IngestionPanel } from "@/components/IngestionPanel";
@@ -15,8 +16,12 @@ export function ExistingChatClient({ conversationId }: { conversationId: string 
 
   if (messages === null) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-        Loading conversation...
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-foreground">Loading conversation</p>
+          <p className="text-xs text-muted-foreground">Fetching your messages...</p>
+        </div>
       </div>
     );
   }

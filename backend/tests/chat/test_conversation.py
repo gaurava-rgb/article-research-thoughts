@@ -14,7 +14,6 @@ def test_build_messages_injects_history():
         system_prompt="You are a knowledge assistant.",
         history=history,
         user_message="What are the risks?",
-        memory_context="",
     )
     roles = [m["role"] for m in result]
     assert "user" in roles

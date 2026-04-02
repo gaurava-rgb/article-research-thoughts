@@ -17,12 +17,17 @@ Why abstraction?
     a new class here. No other code changes.
 """
 
+import logging
+import re
+import time
 from abc import ABC, abstractmethod
 from typing import List
 
 import openai
 
 from second_brain.config import cfg
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -74,8 +79,12 @@ class OpenRouterEmbeddingProvider(EmbeddingProvider):
     """
 
     # Maximum number of texts to send in a single API request.
-    # Keep at 100 to stay within OpenRouter's rate limits.
-    BATCH_SIZE = 100
+    # 20 is conservative for OpenRouter — large batches can return empty data.
+    BATCH_SIZE = 20
+
+    # Retry settings for transient API failures (connection errors, rate limits).
+    MAX_RETRIES = 5
+    RETRY_DELAY = 2.0  # seconds, doubles on each retry (max ~32s on attempt 5)
 
     def __init__(self):
         """
@@ -91,9 +100,16 @@ class OpenRouterEmbeddingProvider(EmbeddingProvider):
         )
         self._model = cfg.embeddings.model
 
+    # Control characters except tab, newline, carriage return (which are fine in text).
+    _CONTROL_CHARS = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+    def _sanitize(self, text: str) -> str:
+        """Strip control characters that can cause embedding APIs to return empty data."""
+        return self._CONTROL_CHARS.sub('', text).strip()
+
     def embed(self, texts: List[str]) -> List[List[float]]:
         """
-        Embed a list of texts, batching into groups of 100.
+        Embed a list of texts, batching into groups of BATCH_SIZE.
 
         Args:
             texts: List of strings to embed.
@@ -110,10 +126,36 @@ class OpenRouterEmbeddingProvider(EmbeddingProvider):
         for batch_start in range(0, len(texts), self.BATCH_SIZE):
             batch = texts[batch_start : batch_start + self.BATCH_SIZE]
 
-            response = self._client.embeddings.create(
-                model=self._model,
-                input=batch,
-            )
+            # Sanitize: strip control characters. If a text becomes empty after
+            # sanitization, replace with a single space so the index stays aligned.
+            clean_batch = [self._sanitize(t) or " " for t in batch]
+
+            delay = self.RETRY_DELAY
+            for attempt in range(self.MAX_RETRIES):
+                try:
+                    response = self._client.embeddings.create(
+                        model=self._model,
+                        input=clean_batch,
+                    )
+                    break  # success
+                except (ValueError, openai.APIError) as exc:
+                    if attempt < self.MAX_RETRIES - 1:
+                        logger.warning(
+                            "Embedding batch failed (attempt %d/%d): %s — "
+                            "batch size=%d, first text (truncated): %r",
+                            attempt + 1, self.MAX_RETRIES, exc,
+                            len(clean_batch), clean_batch[0][:120],
+                        )
+                        time.sleep(delay)
+                        delay *= 2
+                    else:
+                        logger.error(
+                            "Embedding batch failed after %d attempts. "
+                            "batch size=%d, texts (truncated): %r",
+                            self.MAX_RETRIES, len(clean_batch),
+                            [t[:80] for t in clean_batch],
+                        )
+                        raise
 
             # The API returns embeddings in the same order as the input.
             # Sort by index to be safe (the spec allows out-of-order responses).

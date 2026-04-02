@@ -1,31 +1,39 @@
 """FastAPI router for chat, conversation management, and sync endpoints.
 
 Endpoints:
-  POST   /api/chat                      — stream LLM response as SSE
+  POST   /api/chat                      — return one complete chat response as JSON
   POST   /api/conversations             — create new conversation
   GET    /api/conversations             — list conversations (sidebar)
   GET    /api/conversations/{id}/messages — load conversation history
   PATCH  /api/conversations/{id}        — update title
 
-SSE format:
-  data: {"type": "token", "content": "<delta>"}\n\n   (one per LLM token)
-  data: {"type": "sources", "sources": [...]}\n\n     (after all tokens)
-  data: [DONE]\n\n                                     (stream terminator)
+/api/chat response shape:
+  {"content": "<full assistant reply>", "sources": [...]}
 """
 from __future__ import annotations
+
+import logging
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a personal knowledge assistant. The user is asking questions about "
     "articles, essays, and ideas they have saved to their Second Brain. "
-    "When you have relevant source material, structure your response with "
-    "[FROM YOUR SOURCES] for information drawn from their saved articles, "
-    "followed by [ANALYSIS] for your synthesis and commentary. "
-    "Be concise and specific. Cite article titles when referencing sources."
+    "Always structure your response with these exact section headers — even when "
+    "sources are not directly relevant:\n\n"
+    "[FROM YOUR SOURCES]\n"
+    "Narrative synthesis of what their saved articles say. Write flowing prose, not "
+    "bullet points. Cite article titles in bold: **Title**. If nothing is relevant, "
+    "say so honestly inside this section.\n\n"
+    "[ANALYSIS]\n"
+    "Your synthesis: patterns, tensions, and what their reading reveals.\n\n"
+    "Only add [CONTRADICTIONS] when sources genuinely disagree: "
+    "'**Source A** argues X, while **Source B** argues Y.' "
+    "Never fabricate sources. Always output both [FROM YOUR SOURCES] and [ANALYSIS]."
 )
 
 
@@ -44,20 +52,25 @@ class ConversationPatch(BaseModel):
 
 @router.post("/chat")
 async def chat_endpoint(body: ChatRequest) -> dict:
-    """Return a complete LLM response as JSON (Vercel serverless doesn't support SSE streaming)."""
+    """Return one complete assistant reply and cited sources as JSON."""
     from second_brain.retrieval.search import hybrid_search, SearchResult
     from second_brain.chat.conversation import (
         get_messages,
         save_message,
-        save_message_with_embedding,
         build_messages_for_llm,
     )
-    from second_brain.chat.memory import retrieve_memory_context
     from second_brain.config import cfg
     from openai import AsyncOpenAI
 
-    # 1. Retrieve relevant source chunks
-    sources: list[SearchResult] = hybrid_search(body.message, top_k=5)
+    # 1. Retrieve relevant source chunks, deduplicated by source article
+    raw_results: list[SearchResult] = hybrid_search(body.message, top_k=30)
+    seen: set[str] = set()
+    sources: list[SearchResult] = []
+    for r in raw_results:
+        if r.source_id not in seen:
+            seen.add(r.source_id)
+            sources.append(r)
+
     sources_for_prompt = "\n\n".join(
         f"[Source: {s.title}]\n{s.content}" for s in sources
     )
@@ -71,10 +84,7 @@ async def chat_endpoint(body: ChatRequest) -> dict:
         for s in sources
     ]
 
-    # 2. Cross-session memory (CHAT-04)
-    memory_ctx = retrieve_memory_context(body.message, body.conversation_id)
-
-    # 3. Build LLM messages with history (CHAT-01)
+    # 2. Build LLM messages with history (CHAT-01)
     history = get_messages(body.conversation_id)
     history_for_llm = [{"role": m["role"], "content": m["content"]} for m in history]
 
@@ -86,13 +96,12 @@ async def chat_endpoint(body: ChatRequest) -> dict:
         system_prompt=full_system,
         history=history_for_llm,
         user_message=body.message,
-        memory_context=memory_ctx,
     )
 
-    # 4. Save user message
+    # 3. Save user message
     save_message(body.conversation_id, "user", body.message)
 
-    # 5. Call LLM and collect full response
+    # 4. Call LLM and collect full response
     client = AsyncOpenAI(
         base_url=cfg.llm.base_url,
         api_key=cfg.llm.api_key,
@@ -103,9 +112,11 @@ async def chat_endpoint(body: ChatRequest) -> dict:
     )
     complete_response = completion.choices[0].message.content or ""
 
-    # 6. Save assistant message with embedding
+    # 5. Save assistant message (no embedding — source articles are the retrieval
+    #    ground truth; embedding AI responses would feed derivatives back into future
+    #    prompts and cause the model to cite itself instead of your reading)
     if complete_response:
-        save_message_with_embedding(body.conversation_id, "assistant", complete_response)
+        save_message(body.conversation_id, "assistant", complete_response)
 
     return {"content": complete_response, "sources": sources_json}
 
@@ -139,6 +150,92 @@ def patch_conversation_endpoint(conversation_id: str, body: ConversationPatch):
     return {"ok": True}
 
 
+@router.get("/topics")
+def list_topics_endpoint():
+    """Return all topics sorted by article count descending."""
+    from second_brain.db import get_db_client
+
+    db = get_db_client()
+    topics = db.table("topics").select("id, name, summary").execute().data or []
+    memberships = db.table("source_topics").select("topic_id").execute().data or []
+
+    counts: dict[str, int] = {}
+    for row in memberships:
+        counts[row["topic_id"]] = counts.get(row["topic_id"], 0) + 1
+
+    result = [
+        {
+            "id": t["id"],
+            "name": t["name"],
+            "summary": t.get("summary"),
+            "article_count": counts.get(t["id"], 0),
+        }
+        for t in topics
+    ]
+    result.sort(key=lambda t: t["article_count"], reverse=True)
+    return result
+
+
+@router.get("/insights")
+def list_insights_endpoint():
+    """Return all insights ordered newest-first, plus the unseen count.
+
+    Response shape:
+      { "insights": [{id, type, title, body, seen, created_at}, ...],
+        "unseen_count": int }
+    """
+    from second_brain.db import get_db_client
+    from second_brain.ingestion.insights import get_insights
+    db = get_db_client()
+    return get_insights(db)
+
+
+@router.patch("/insights/{insight_id}/seen")
+def mark_insight_seen_endpoint(insight_id: str):
+    """Mark a single insight as seen (clears the badge count by 1)."""
+    from second_brain.db import get_db_client
+    from second_brain.ingestion.insights import mark_seen
+    db = get_db_client()
+    mark_seen(db, insight_id)
+    return {"ok": True}
+
+
+@router.post("/insights/generate-digest")
+async def generate_digest_endpoint():
+    """Generate a weekly digest from articles ingested in the last 7 days.
+
+    Calls the LLM to synthesize reading themes, then saves the result as a
+    'digest' insight row. Returns the new insight or a 'no_articles' status.
+    """
+    import asyncio
+
+    def _run():
+        from second_brain.db import get_db_client
+        from second_brain.providers.llm import get_llm_provider
+        from second_brain.ingestion.insights import generate_digest
+        db = get_db_client()
+        llm = get_llm_provider()
+        return generate_digest(db, llm)
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _run)
+
+    if result is None:
+        return {"status": "no_articles", "message": "No articles ingested in the last 7 days."}
+    return {"status": "ok", "insight": result}
+
+
+@router.get("/conversations/similar")
+def similar_conversations_endpoint(query: str, exclude_id: str):
+    """Return past conversations semantically similar to `query`.
+
+    Powers the 'you explored this before' UI nudge in the chat panel.
+    Results are shown to the user — they are never injected into LLM prompts.
+    """
+    from second_brain.chat.memory import retrieve_similar_conversations
+    return retrieve_similar_conversations(query, exclude_id)
+
+
 @router.post("/sync")
 async def sync_endpoint():
     """Trigger a Readwise sync from the UI (UI-05).
@@ -153,8 +250,11 @@ async def sync_endpoint():
     import traceback
 
     async def run_sync():
-        from second_brain.ingestion.readwise import fetch_all_articles, store_articles
-        from second_brain.ingestion.chunker import chunk_text, store_chunks_with_embeddings
+        from second_brain.ingestion.readwise import (
+            chunk_new_sources,
+            fetch_all_articles,
+            store_articles,
+        )
         from second_brain.config import cfg
         from second_brain.db import get_db_client
         from second_brain.providers.embeddings import get_embedding_provider
@@ -164,23 +264,31 @@ async def sync_endpoint():
             db = get_db_client()
             embed = get_embedding_provider()
 
-            # 1. Fetch and store new articles
-            articles = fetch_all_articles(cfg.readwise.token)
-            new_count, skipped_count = store_articles(articles, db)
+            # 1. Fetch new articles incrementally (only since last ingested_at)
+            from second_brain.ingestion.readwise import get_last_ingested_at
+            updated_after = get_last_ingested_at(db)
+            logger.info("UI sync: incremental fetch updated_after=%s", updated_after)
+            articles = fetch_all_articles(cfg.readwise.token, updated_after=updated_after)
+            logger.info("UI sync fetched %s qualifying Readwise articles", len(articles))
+            new_count, skipped_count, new_source_ids = store_articles(
+                articles,
+                db,
+                embed_provider=embed,
+            )
 
-            # 2. Chunk and embed any sources that have no chunks yet
-            all_sources = db.table("sources").select("id, raw_text").execute().data
-            chunked_ids = {r["source_id"] for r in db.table("chunks").select("source_id").execute().data}
-            unchunked_sources = [s for s in all_sources if s["id"] not in chunked_ids]
-
+            # 2. Chunk only the newly inserted articles
             total_chunks = 0
-            for source in unchunked_sources:
-                if not source.get("raw_text"):
-                    continue
-                chunks = chunk_text(source["raw_text"], source_id=source["id"],
-                                    target_tokens=cfg.chunking.target_tokens,
-                                    overlap_tokens=cfg.chunking.overlap_tokens)
-                total_chunks += store_chunks_with_embeddings(chunks, embed, db)
+            if new_source_ids:
+                total_chunks = chunk_new_sources(
+                    new_source_ids,
+                    db,
+                    embed,
+                    target_tokens=cfg.chunking.target_tokens,
+                    overlap_tokens=cfg.chunking.overlap_tokens,
+                )
+                logger.info("UI sync chunked %s new sources → %s chunks", len(new_source_ids), total_chunks)
+            else:
+                logger.info("UI sync: no new articles, skipping chunking")
 
             return new_count, skipped_count, total_chunks
 

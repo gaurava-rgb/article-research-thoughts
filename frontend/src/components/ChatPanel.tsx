@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { MessageBubble } from "./MessageBubble";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { sendMessage } from "@/lib/api";
-import type { Message, Source } from "@/lib/types";
+import { fetchSimilarConversations, sendMessage } from "@/lib/api";
+import type { Message, RelatedConversation, Source } from "@/lib/types";
 
 interface ChatPanelProps {
   conversationId: string;
@@ -16,8 +17,11 @@ interface ChatPanelProps {
 export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
+  const [relatedConversations, setRelatedConversations] = useState<RelatedConversation[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Track whether the first message has been sent in this session
+  const isFirstMessageRef = useRef(initialMessages.length === 0);
 
   function scrollToBottom() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -26,10 +30,10 @@ export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelPro
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isAwaitingResponse) return;
 
     setInput("");
-    setIsStreaming(true);
+    setIsAwaitingResponse(true);
 
     // Optimistically add the user message
     const userMsg: Message = {
@@ -41,7 +45,7 @@ export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelPro
     setMessages((prev) => [...prev, userMsg]);
     scrollToBottom();
 
-    // Add a placeholder assistant message that accumulates streaming tokens
+    // Add a placeholder assistant message that is filled once the reply returns
     const assistantId = crypto.randomUUID();
     const placeholderMsg: Message = {
       id: assistantId,
@@ -51,14 +55,19 @@ export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelPro
     };
     setMessages((prev) => [...prev, placeholderMsg]);
 
+    const wasFirstMessage = isFirstMessageRef.current;
+    if (wasFirstMessage) {
+      isFirstMessageRef.current = false;
+    }
+
     try {
       await sendMessage(
         conversationId,
         trimmed,
-        (token) => {
+        (content) => {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + token } : m,
+              m.id === assistantId ? { ...m, content } : m,
             ),
           );
           scrollToBottom();
@@ -69,8 +78,16 @@ export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelPro
           );
         },
         () => {
-          setIsStreaming(false);
+          setIsAwaitingResponse(false);
           scrollToBottom();
+          // After the first message in a new conversation, surface related past convs
+          if (wasFirstMessage) {
+            fetchSimilarConversations(trimmed, conversationId)
+              .then((similar) => {
+                if (similar.length > 0) setRelatedConversations(similar);
+              })
+              .catch(() => {});
+          }
         },
       );
     } catch (err) {
@@ -82,7 +99,7 @@ export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelPro
             : m,
         ),
       );
-      setIsStreaming(false);
+      setIsAwaitingResponse(false);
     }
   }
 
@@ -99,20 +116,46 @@ export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelPro
       <ScrollArea className="flex-1 px-4 py-4">
         <div className="mx-auto max-w-2xl space-y-4">
           {messages.length === 0 && (
-            <p className="pt-16 text-center text-sm text-muted-foreground">
-              Ask a question about your saved articles.
-            </p>
+            <div className="flex flex-col items-center justify-center pt-20 pb-12 px-6 text-center">
+              <p className="text-base font-medium text-foreground mb-1">
+                What would you like to explore?
+              </p>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Ask anything about your saved articles. Your answers are grounded in what you&apos;ve read.
+              </p>
+            </div>
           )}
           {messages.map((msg) => (
             <MessageBubble
               key={msg.id}
               message={msg}
-              isStreaming={isStreaming && msg.id === messages[messages.length - 1]?.id && msg.role === "assistant"}
+              isPending={isAwaitingResponse && msg.id === messages[messages.length - 1]?.id && msg.role === "assistant"}
             />
           ))}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
+
+      {/* Related conversations nudge (surfaces after first message only) */}
+      {relatedConversations.length > 0 && (
+        <div className="border-t bg-muted/30 px-4 py-2">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
+            You explored related topics before:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {relatedConversations.map((c) => (
+              <Link
+                key={c.conversation_id}
+                href={`/chat/${c.conversation_id}`}
+                className="rounded-md border bg-background px-2 py-1 text-xs text-foreground transition-colors hover:bg-muted"
+              >
+                {c.title}
+                <span className="ml-1 text-muted-foreground">({c.date})</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Input area */}
       <div className="border-t bg-background px-4 py-3">
@@ -121,13 +164,13 @@ export function ChatPanel({ conversationId, initialMessages = [] }: ChatPanelPro
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question... (Enter to send, Shift+Enter for newline)"
+            placeholder="Ask about your saved reading..."
             rows={2}
-            disabled={isStreaming}
+            disabled={isAwaitingResponse}
             className="resize-none"
           />
-          <Button type="submit" disabled={isStreaming || !input.trim()} className="self-end">
-            {isStreaming ? "..." : "Send"}
+          <Button type="submit" disabled={isAwaitingResponse || !input.trim()} className="self-end">
+            {isAwaitingResponse ? "Thinking…" : "Send"}
           </Button>
         </form>
       </div>

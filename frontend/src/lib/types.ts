@@ -9,7 +9,7 @@ export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  sources?: Source[]; // Only present on assistant messages, after stream completes
+  sources?: Source[]; // Only present on assistant messages returned from /api/chat
   createdAt: string;
 }
 
@@ -20,7 +20,18 @@ export interface Conversation {
   updatedAt: string;
 }
 
-// SSE event shapes from /api/chat
-export type ChatEvent =
-  | { type: "token"; content: string }
-  | { type: "sources"; sources: Source[] };
+export interface Insight {
+  id: string;
+  type: "pattern" | "contradiction" | "digest";
+  title: string;
+  body: string;
+  seen: boolean;
+  createdAt: string;
+}
+
+export interface RelatedConversation {
+  conversation_id: string;
+  title: string;
+  date: string;
+  similarity: number;
+}

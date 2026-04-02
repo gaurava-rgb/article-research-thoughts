@@ -2,35 +2,35 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 2
-current_plan: 02-03 complete (3 of N plans in Phase 2)
-status: executing
-stopped_at: Checkpoint reached in 02-04-PLAN.md — Vercel deployment config created; awaiting human verification
-last_updated: "2026-03-10T20:42:44.772Z"
+current_phase: 5
+current_plan: complete
+status: complete
+stopped_at: All 5 phases complete. 35/35 backend tests passing. TypeScript clean. Ready for deployment or post-v1 work.
+last_updated: "2026-04-02T00:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
+  completed_phases: 5
+  total_plans: 11
+  completed_plans: 11
 ---
 
 # State: Second Brain — Personal Knowledge System
 
 **Project:** Second Brain — Personal Knowledge System
 **Core Value:** Answer "what do I actually think about X?" by synthesizing across all saved sources
-**Last Updated:** 2026-03-10
+**Last Updated:** 2026-03-11
 
 ---
 
 ## Current Position
 
 **Milestone:** 1 (of 1 planned)
-**Current Phase:** 2
-**Current Plan:** 02-04 checkpoint (4 of 4 plans in Phase 2 — awaiting human verification)
-**Status:** In progress
+**Current Phase:** 5 (complete)
+**Current Plan:** All plans complete
+**Status:** Complete
 
 ```
-Progress: 7 of 7 plans complete
+Progress: 11 of 11 plans complete
 [██████████] 100%
 ```
 
@@ -41,19 +41,21 @@ Progress: 7 of 7 plans complete
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Foundation | Complete (3/3 plans done) | 3 |
-| 2 | Chat UI + Memory | In progress (1/N plans done) | TBD |
-| 3 | Clustering + Topic Evolution | Not started | TBD |
-| 4 | Synthesis Engine | Not started | TBD |
-| 5 | Proactive Insights + Digests | Not started | TBD |
+| 2 | Chat UI + Memory | Complete (4/4 plans done; Vercel deploy checkpoint pending human action) | 4 |
+| 3 | Clustering + Topic Evolution | Complete — 764 sources → 354 topics, /api/topics live, sync wired | 4 |
+| 4 | Synthesis Engine | Complete — narrative synthesis, [FROM YOUR SOURCES]/[ANALYSIS]/[CONTRADICTIONS] sections, top_k=30 dedup | TBD |
+| 5 | Proactive Insights + Digests | Complete — weekly digest, insights table, UI badge + panel, related-convs nudge, memory arch fix | TBD |
 
 ---
 
 ## Performance Metrics
 
-- Plans executed: 3
-- Plans passing on first run: 3/3 (100%)
-- Phases completed: 1/5
+- Plans executed: 11
+- Plans passing on first run: 11/11 (100%)
+- Phases completed: 5/5
 - Requirements mapped: 33/33
+- Backend tests: 35/35 passing
+- TypeScript: clean (0 errors)
 
 ---
 
@@ -88,6 +90,7 @@ Progress: 7 of 7 plans complete
 | fastapi and uvicorn added to pyproject.toml | Were missing despite router.py requiring them; added as Rule 3 auto-fix |
 | api/index.py at repo root is Vercel Python entrypoint | Vercel requires this exact path for the Python serverless function |
 | maxDuration: 300 in vercel.json | Hobby plan maximum; needed for Readwise sync (60-120s) and LLM streaming |
+| Whole-source vectors stored on `sources.source_embedding` during ingestion | Phase 3 should reuse the current schema/flow instead of following older `sources.embedding` plan wording |
 
 ### Known Constraints
 
@@ -107,7 +110,7 @@ Progress: 7 of 7 plans complete
 
 - Backend deployment target: local dev server vs. cloud (Railway, Render, Fly.io)?
 - Weekly digest delivery mechanism: stored in DB and viewed in UI, or email, or both?
-- Clustering algorithm: k-means, HDBSCAN, or LLM-based topic assignment?
+- Do older rows with NULL `sources.source_embedding` need a backfill before Phase 3 clustering is enabled broadly?
 
 ### Blockers
 
@@ -117,11 +120,19 @@ None currently.
 
 ## Session Continuity
 
-**Last session:** 2026-03-10T20:42:44.771Z
+**Last session:** 2026-04-02
 
-**Stopped at:** Checkpoint reached in 02-04-PLAN.md — Vercel deployment config created; awaiting human verification
+**Stopped at:** All 5 phases complete. v1 milestone done.
 
-**Next action:** Human to set Vercel env vars, deploy with `vercel --yes`, verify live URL, then signal "deployed" to resume 02-04 checkpoint.
+**Next action options (post-v1):**
+- Vercel deployment — still pending human action (set env vars, `vercel --yes`, verify live URL)
+- Pattern/contradiction insight generation — `generate_digest` is built; pattern detection across all topics would extend WORK-02
+- Corpus completeness — 765 sources, all chunked; consider scheduled auto-sync
+- Supabase storage — was near free-tier limit (500MB) post-dedup; monitor
+
+**Open questions carried forward:**
+- Backend deployment target: local dev only, or cloud (Railway/Render/Fly.io)?
+- Weekly digest delivery: UI only (current), or email too?
 
 ---
 *State initialized: 2026-03-10 after roadmap creation*

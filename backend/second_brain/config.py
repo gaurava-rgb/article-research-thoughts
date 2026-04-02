@@ -26,7 +26,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 import yaml
+
+# Load .env from the project root (walk up from this file to find it)
+_env_path = Path(__file__).resolve().parents[2] / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path, override=True)
+else:
+    # Also check one more level up (monorepo root)
+    _env_path2 = _env_path.parent.parent / ".env"
+    if _env_path2.exists():
+        load_dotenv(_env_path2, override=True)
 
 
 # =============================================================================

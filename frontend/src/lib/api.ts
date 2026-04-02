@@ -1,4 +1,4 @@
-import type { Conversation, Message, Source } from "./types";
+import type { Conversation, Insight, Message, RelatedConversation, Source } from "./types";
 
 // Base URL: empty string in production (same-origin via vercel.json rewrites),
 // http://localhost:8000 in development (set via NEXT_PUBLIC_API_URL env var or defaults to "").
@@ -41,16 +41,54 @@ export async function fetchMessages(conversationId: string): Promise<Message[]> 
   }));
 }
 
+export async function fetchInsights(): Promise<{ insights: Insight[]; unseen_count: number }> {
+  const res = await fetch(`${BASE}/api/insights`);
+  if (!res.ok) throw new Error(`Failed to fetch insights: ${res.status}`);
+  const data = await res.json() as { insights: Array<Record<string, unknown>>; unseen_count: number };
+  return {
+    insights: data.insights.map((i) => ({
+      id: i.id as string,
+      type: i.type as Insight["type"],
+      title: i.title as string,
+      body: i.body as string,
+      seen: i.seen as boolean,
+      createdAt: i.created_at as string,
+    })),
+    unseen_count: data.unseen_count,
+  };
+}
+
+export async function markInsightSeen(insightId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/insights/${insightId}/seen`, { method: "PATCH" });
+  if (!res.ok) throw new Error(`Failed to mark insight seen: ${res.status}`);
+}
+
+export async function generateDigest(): Promise<{ status: string; message?: string; insight?: Insight }> {
+  const res = await fetch(`${BASE}/api/insights/generate-digest`, { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to generate digest: ${res.status}`);
+  return res.json() as Promise<{ status: string; message?: string; insight?: Insight }>;
+}
+
+export async function fetchSimilarConversations(
+  query: string,
+  excludeId: string,
+): Promise<RelatedConversation[]> {
+  const params = new URLSearchParams({ query, exclude_id: excludeId });
+  const res = await fetch(`${BASE}/api/conversations/similar?${params}`);
+  if (!res.ok) return [];
+  return res.json() as Promise<RelatedConversation[]>;
+}
+
 /**
- * Send a message to /api/chat and stream the SSE response.
- * Calls onToken for each incremental text chunk.
- * Calls onSources once after all tokens arrive.
- * Calls onDone when the stream terminates.
+ * Send a message to `/api/chat` and return the current JSON response.
+ * Calls `onContent` with the full assistant reply.
+ * Calls `onSources` with the accompanying source list.
+ * Calls `onDone` after the response has been processed.
  */
 export async function sendMessage(
   conversationId: string,
   message: string,
-  onToken: (token: string) => void,
+  onContent: (content: string) => void,
   onSources: (sources: Source[]) => void,
   onDone: () => void,
 ): Promise<void> {
@@ -65,7 +103,7 @@ export async function sendMessage(
   }
 
   const data = await res.json() as { content: string; sources: Source[] };
-  onToken(data.content);
+  onContent(data.content);
   onSources(data.sources ?? []);
   onDone();
 }

@@ -6,11 +6,10 @@ import type { Message } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: Message;
-  isStreaming?: boolean;
+  isPending?: boolean;
 }
 
-// Memoized markdown renderer — prevents re-render thrash during token streaming
-// (see Research pitfall 2: react-markdown re-renders on every state update)
+// Memoized markdown renderer to avoid re-rendering unchanged message content.
 const MemoizedMarkdown = memo(({ content }: { content: string }) => (
   <ReactMarkdown
     remarkPlugins={[remarkGfm]}
@@ -25,57 +24,45 @@ const MemoizedMarkdown = memo(({ content }: { content: string }) => (
 MemoizedMarkdown.displayName = "MemoizedMarkdown";
 
 /**
- * Split assistant content into [FROM YOUR SOURCES] and [ANALYSIS] sections.
- * Returns an array of { label, content } objects for distinct visual styling.
+ * Split assistant content into [FROM YOUR SOURCES], [ANALYSIS], and [CONTRADICTIONS] sections.
+ * Returns an array of { label, text } objects for distinct visual styling.
  */
 function parseAssistantSections(content: string): Array<{ label: string | null; text: string }> {
-  // Markers injected by the SYSTEM_PROMPT in router.py
   const SOURCES_MARKER = "[FROM YOUR SOURCES]";
   const ANALYSIS_MARKER = "[ANALYSIS]";
+  const CONTRADICTIONS_MARKER = "[CONTRADICTIONS]";
+
+  // Collect all marker positions
+  const markers: Array<{ idx: number; label: string; markerLen: number }> = [];
+  const s = content.indexOf(SOURCES_MARKER);
+  const a = content.indexOf(ANALYSIS_MARKER);
+  const c = content.indexOf(CONTRADICTIONS_MARKER);
+  if (s !== -1) markers.push({ idx: s, label: "FROM YOUR SOURCES", markerLen: SOURCES_MARKER.length });
+  if (a !== -1) markers.push({ idx: a, label: "ANALYSIS", markerLen: ANALYSIS_MARKER.length });
+  if (c !== -1) markers.push({ idx: c, label: "CONTRADICTIONS", markerLen: CONTRADICTIONS_MARKER.length });
+
+  if (markers.length === 0) return [{ label: null, text: content }];
+
+  markers.sort((a, b) => a.idx - b.idx);
 
   const sections: Array<{ label: string | null; text: string }> = [];
-  const remaining = content;
 
-  const sourcesIdx = remaining.indexOf(SOURCES_MARKER);
-  const analysisIdx = remaining.indexOf(ANALYSIS_MARKER);
-
-  if (sourcesIdx === -1 && analysisIdx === -1) {
-    // No section markers — render as a single plain block
-    return [{ label: null, text: remaining }];
+  // Text before first marker
+  if (markers[0].idx > 0) {
+    sections.push({ label: null, text: content.slice(0, markers[0].idx).trim() });
   }
 
-  // Text before first marker (if any)
-  const firstMarker = Math.min(
-    sourcesIdx !== -1 ? sourcesIdx : Infinity,
-    analysisIdx !== -1 ? analysisIdx : Infinity,
-  );
-  if (firstMarker > 0) {
-    sections.push({ label: null, text: remaining.slice(0, firstMarker).trim() });
-  }
-
-  // Extract SOURCES section
-  if (sourcesIdx !== -1) {
-    const afterSources = sourcesIdx + SOURCES_MARKER.length;
-    const nextSection = analysisIdx > sourcesIdx ? analysisIdx : remaining.length;
-    sections.push({
-      label: "FROM YOUR SOURCES",
-      text: remaining.slice(afterSources, nextSection).trim(),
-    });
-  }
-
-  // Extract ANALYSIS section
-  if (analysisIdx !== -1) {
-    const afterAnalysis = analysisIdx + ANALYSIS_MARKER.length;
-    sections.push({
-      label: "ANALYSIS",
-      text: remaining.slice(afterAnalysis).trim(),
-    });
+  for (let i = 0; i < markers.length; i++) {
+    const start = markers[i].idx + markers[i].markerLen;
+    const end = i + 1 < markers.length ? markers[i + 1].idx : content.length;
+    const text = content.slice(start, end).trim();
+    if (text) sections.push({ label: markers[i].label, text });
   }
 
   return sections;
 }
 
-export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
+export function MessageBubble({ message, isPending = false }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   if (isUser) {
@@ -119,13 +106,25 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
               </div>
             );
           }
+          if (section.label === "CONTRADICTIONS") {
+            return (
+              <div key={i} className="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-rose-400">
+                  Contradictions
+                </p>
+                <div className="prose prose-sm max-w-none prose-invert text-foreground">
+                  <MemoizedMarkdown content={section.text} />
+                </div>
+              </div>
+            );
+          }
           return (
             <div key={i} className="prose prose-sm max-w-none prose-invert text-foreground">
               <MemoizedMarkdown content={section.text} />
             </div>
           );
         })}
-        {isStreaming && (
+        {isPending && (
           <span className="inline-block h-4 w-1 animate-pulse bg-current opacity-70" />
         )}
       </div>

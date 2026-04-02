@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { createConversation } from "@/lib/api";
 import { ChatPanel } from "@/components/ChatPanel";
 import { IngestionPanel } from "@/components/IngestionPanel";
@@ -17,16 +18,25 @@ export function NewChatClient() {
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-destructive text-sm">
-        Failed to start conversation: {error}
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-4">
+        <p className="text-center text-sm text-destructive">
+          Couldn&apos;t start a new conversation.
+        </p>
+        <p className="text-center text-xs text-muted-foreground max-w-sm">
+          {error}
+        </p>
       </div>
     );
   }
 
   if (!conversationId) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-        Starting conversation...
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-foreground">Setting up your chat</p>
+          <p className="text-xs text-muted-foreground">One moment...</p>
+        </div>
       </div>
     );
   }

@@ -53,8 +53,8 @@ def sync(
 
     Steps:
         1. Fetch all articles from the Readwise API (paginated).
-        2. Store new articles in the `sources` table (skip duplicates by readwise_id).
-        3. For each new article: chunk the text, generate embeddings, store in `chunks`.
+        2. Store new articles in the `sources` table with one source-level embedding.
+        3. For each new article: chunk the text, generate chunk embeddings, store in `chunks`.
         4. Print a summary of what was done.
 
     Requires environment variables:
@@ -68,17 +68,30 @@ def sync(
     from second_brain.config import cfg
     from second_brain.db import get_db_client
     from second_brain.providers.embeddings import get_embedding_provider
-    from second_brain.ingestion.readwise import fetch_all_articles, store_articles
-    from second_brain.ingestion.chunker import chunk_text, store_chunks_with_embeddings
+    from second_brain.ingestion.readwise import (
+        chunk_new_sources,
+        fetch_all_articles,
+        get_last_ingested_at,
+        store_articles,
+    )
 
     console.print("[bold]Starting Readwise sync...[/bold]")
 
     # -------------------------------------------------------------------------
-    # Step 1: Fetch all articles from Readwise Reader
+    # Step 1: Fetch new articles from Readwise Reader (incremental)
     # -------------------------------------------------------------------------
     console.print("\n[cyan]Step 1:[/cyan] Fetching articles from Readwise Reader...")
 
-    articles = fetch_all_articles(cfg.readwise.token)
+    db = get_db_client()
+    embed_provider = get_embedding_provider()
+
+    updated_after = get_last_ingested_at(db)
+    if updated_after:
+        console.print(f"  Incremental sync — fetching articles updated after [bold]{updated_after}[/bold]")
+    else:
+        console.print("  First run — fetching full corpus.")
+
+    articles = fetch_all_articles(cfg.readwise.token, updated_after=updated_after)
     console.print(f"  Fetched [bold]{len(articles)}[/bold] articles total.")
 
     # Optional: limit the number of articles processed (for testing)
@@ -89,83 +102,205 @@ def sync(
     # -------------------------------------------------------------------------
     # Step 2: Store new articles (skip existing ones by readwise_id)
     # -------------------------------------------------------------------------
-    console.print("\n[cyan]Step 2:[/cyan] Storing articles in database...")
+    console.print("\n[cyan]Step 2:[/cyan] Storing articles and source embeddings...")
 
-    db = get_db_client()
-    new_count, skipped_count = store_articles(articles, db)
+    new_count, skipped_count, new_source_ids = store_articles(articles, db, embed_provider=embed_provider)
     console.print(f"  [green]{new_count} new[/green] articles stored, [yellow]{skipped_count} skipped[/yellow] (already in DB).")
 
-    if new_count == 0:
-        console.print("\n[bold green]Sync complete.[/bold green] No new articles to process.")
-        return
-
     # -------------------------------------------------------------------------
-    # Step 3: Chunk and embed new articles
-    # Fetch article IDs from DB so we can link chunks to sources rows.
+    # Step 3: Chunk only the newly inserted articles.
     # -------------------------------------------------------------------------
-    console.print("\n[cyan]Step 3:[/cyan] Chunking and embedding new articles...")
-
-    embed_provider = get_embedding_provider()
     total_chunks = 0
-
-    # We need to find only the articles that were just inserted (new ones).
-    # We re-query the DB for each article by readwise_id to get its UUID.
-    for article in articles:
-        # Only process articles that were just inserted (not skipped)
-        source_result = (
-            db.table("sources")
-            .select("id")
-            .eq("readwise_id", article.readwise_id)
-            .execute()
-        )
-
-        if not source_result.data:
-            # Should not happen — we just inserted it — but be defensive
-            console.print(f"  [red]Warning:[/red] Could not find source row for {article.readwise_id}")
-            continue
-
-        source_id = source_result.data[0]["id"]
-
-        # Check if chunks already exist for this source (avoid double-processing
-        # in case the embedding step was interrupted and re-run)
-        existing_chunks = (
-            db.table("chunks")
-            .select("id")
-            .eq("source_id", source_id)
-            .limit(1)
-            .execute()
-        )
-        if existing_chunks.data:
-            # Already chunked (e.g. from a previous partial run)
-            continue
-
-        # Split text into ~500-token segments with ~50-token overlap
-        chunks = chunk_text(
-            article.text,
-            source_id=str(source_id),
+    if new_source_ids:
+        console.print("\n[cyan]Step 3:[/cyan] Chunking and embedding new articles...")
+        total_chunks = chunk_new_sources(
+            new_source_ids,
+            db,
+            embed_provider,
             target_tokens=cfg.chunking.target_tokens,
             overlap_tokens=cfg.chunking.overlap_tokens,
         )
-
-        if not chunks:
-            console.print(f"  [yellow]  Skipped (no chunks):[/yellow] {article.title[:60]}")
-            continue
-
-        # Generate embeddings and store chunks in the database
-        stored = store_chunks_with_embeddings(chunks, embed_provider, db)
-        total_chunks += stored
-
-        # Print per-article progress so the user can see what's happening
-        title_preview = article.title[:60] if article.title else "(no title)"
-        console.print(f"  {title_preview}: {len(chunks)} chunks, {stored} embeddings")
+        console.print(f"  {total_chunks} chunks created across {len(new_source_ids)} new articles.")
+    else:
+        console.print("\n[cyan]Step 3:[/cyan] No new articles — skipping chunking.")
 
     # -------------------------------------------------------------------------
-    # Step 4: Final summary
+    # Step 4: Assign new articles to topics
+    # -------------------------------------------------------------------------
+    if new_source_ids:
+        try:
+            console.print("\n[cyan]Step 4:[/cyan] Assigning articles to topics...")
+            from second_brain.ingestion.clustering import assign_topic_to_source
+            from second_brain.providers.llm import get_llm_provider
+            llm_provider = get_llm_provider()
+
+            changed_topic_ids: set[str] = set()
+            for source_id in new_source_ids:
+                result = assign_topic_to_source(source_id, db, llm_provider)
+                if result.topic_id:
+                    changed_topic_ids.add(result.topic_id)
+                    status = "new topic" if result.created_topic else f"→ existing (sim={result.similarity:.2f})"
+                    console.print(f"  [dim]{source_id[:8]}[/dim]: {status}")
+
+            # -------------------------------------------------------------------------
+            # Step 5: Regenerate summaries for any topics that gained new members
+            # -------------------------------------------------------------------------
+            if changed_topic_ids:
+                console.print("\n[cyan]Step 5:[/cyan] Updating topic summaries...")
+                for topic_id in changed_topic_ids:
+                    rows = db.table("source_topics").select("sources(title)").eq("topic_id", topic_id).execute().data or []
+                    titles = [r["sources"]["title"] for r in rows if r.get("sources")][:30]
+                    summary = llm_provider.complete([
+                        {"role": "system", "content": "You write brief topic summaries for a personal knowledge base. 2-3 sentences max."},
+                        {"role": "user", "content": "Topic sources:\n" + "\n".join(f"- {t}" for t in titles)},
+                    ])
+                    db.table("topics").update({"summary": summary}).eq("id", topic_id).execute()
+                    console.print(f"  Updated summary for topic {topic_id[:8]}")
+        except Exception as exc:
+            console.print(f"\n[yellow]Warning:[/yellow] Topic assignment failed (sync still complete): {exc}")
+    else:
+        console.print("\n[cyan]Step 4:[/cyan] No new articles — skipping topic assignment.")
+
+    # -------------------------------------------------------------------------
+    # Step 6: Final summary
     # -------------------------------------------------------------------------
     console.print(
         f"\n[bold green]Sync complete.[/bold green] "
         f"{new_count} new articles, {skipped_count} skipped, "
         f"{total_chunks} chunks created."
+    )
+
+
+@app.command("backfill-source-embeddings")
+def backfill_source_embeddings(
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        help="Max missing source rows to repair in this run",
+    )
+) -> None:
+    """
+    Fill missing `sources.source_embedding` values for older rows.
+
+    Uses the same whole-source embedding logic as normal Readwise sync, but only
+    updates rows where `source_embedding` is currently NULL.
+    """
+    from second_brain.db import get_db_client
+    from second_brain.providers.embeddings import get_embedding_provider
+    from second_brain.ingestion.readwise import backfill_missing_source_embeddings
+
+    console.print("[bold]Backfilling missing source embeddings...[/bold]")
+    if limit is not None:
+        console.print(
+            f"  [yellow]Limit set to {limit} missing rows for this run.[/yellow]"
+        )
+
+    db = get_db_client()
+    embed_provider = get_embedding_provider()
+    missing_count, updated_count, skipped_no_text_count = backfill_missing_source_embeddings(
+        db,
+        embed_provider,
+        limit=limit,
+    )
+
+    if missing_count == 0:
+        console.print(
+            "\n[bold green]Backfill complete.[/bold green] No missing source embeddings found."
+        )
+        return
+
+    console.print(
+        f"\n[bold green]Backfill complete.[/bold green] "
+        f"{updated_count} source embeddings written, "
+        f"{skipped_no_text_count} rows skipped for missing raw text."
+    )
+
+
+@app.command("repair-chunks")
+def repair_chunks(
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        help="Max sources to repair in this run (useful for testing)",
+    )
+) -> None:
+    """
+    Chunk and embed any sources that have no chunks.
+
+    Use this to recover from a crashed sync that stored articles but didn't
+    finish chunking them. Safe to re-run — skips sources that already have chunks.
+    """
+    from second_brain.db import get_db_client
+    from second_brain.providers.embeddings import get_embedding_provider
+    from second_brain.config import cfg
+    from second_brain.ingestion.readwise import backfill_missing_chunks
+
+    console.print("[bold]Repairing missing chunks...[/bold]")
+
+    db = get_db_client()
+    embed_provider = get_embedding_provider()
+    missing_count, repaired, total_chunks, skipped = backfill_missing_chunks(
+        db,
+        embed_provider,
+        target_tokens=cfg.chunking.target_tokens,
+        overlap_tokens=cfg.chunking.overlap_tokens,
+    )
+
+    if missing_count == 0:
+        console.print("\n[bold green]Done.[/bold green] All sources already have chunks.")
+        return
+
+    console.print(
+        f"\n[bold green]Done.[/bold green] "
+        f"{repaired} sources repaired, {total_chunks} chunks created, "
+        f"{skipped} skipped (no raw text). "
+        f"({missing_count} sources were missing chunks.)"
+    )
+
+
+@app.command("assign-topics")
+def assign_topics(
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        help="Max unassigned source rows to process in this run",
+    )
+) -> None:
+    """
+    Assign unassigned sources to existing or newly created topics.
+
+    This is an explicit Phase 3 mechanics command. It intentionally stops before
+    wiring topic assignment into normal sync or generating topic summaries.
+    """
+    from second_brain.db import get_db_client
+    from second_brain.ingestion.clustering import assign_topics_to_unassigned_sources
+    from second_brain.providers.llm import get_llm_provider
+
+    console.print("[bold]Assigning topics to unassigned sources...[/bold]")
+    if limit is not None:
+        console.print(
+            f"  [yellow]Limit set to {limit} unassigned sources for this run.[/yellow]"
+        )
+
+    db = get_db_client()
+    llm_provider = get_llm_provider()
+    result = assign_topics_to_unassigned_sources(
+        db,
+        llm_provider,
+        limit=limit,
+    )
+
+    if result.processed_count == 0:
+        console.print(
+            "\n[bold green]Topic assignment complete.[/bold green] No unassigned sources found."
+        )
+        return
+
+    console.print(
+        f"\n[bold green]Topic assignment complete.[/bold green] "
+        f"{result.assigned_existing_count} joined existing topics, "
+        f"{result.created_topic_count} created new topics, "
+        f"{result.skipped_missing_embedding_count} skipped for missing source embeddings."
     )
 
 

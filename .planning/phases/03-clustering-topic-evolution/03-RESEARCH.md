@@ -20,13 +20,13 @@
 
 ## Summary
 
-This phase adds automatic topic clustering to the ingestion pipeline. When a new article is synced, its embedding is compared against existing topic centroids. If it is sufficiently similar to an existing topic (cosine similarity >= threshold), it is assigned there. If no existing topic is close enough, the LLM names a new topic and the article seeds it. After assignment, the topic summary is regenerated from the titles of all sources in that topic.
+This phase adds automatic topic clustering to the ingestion pipeline. When a new article is synced, its stored `sources.source_embedding` is compared against existing topic centroids. If it is sufficiently similar to an existing topic (cosine similarity >= threshold), it is assigned there. If no existing topic is close enough, the LLM names a new topic and the article seeds it. After assignment, the topic summary is regenerated from the titles of all sources in that topic.
 
-The schema already has everything needed: `topics` (id, name, summary), `source_topics` (join), and `published_at` on every source row. No schema migrations are required for the core feature. The only schema addition is a `centroid_embedding` column on `topics`, which enables O(N_topics) centroid comparisons instead of scanning all chunks.
+The schema already has most of what Phase 3 needs: `topics` (id, name, summary), `source_topics` (join), `published_at` on every source row, and durable whole-source vectors on `sources.source_embedding`. Phase 3 should reuse `sources.source_embedding` as the source-level vector of record rather than inventing a second source embedding column or reverting to a chunk-average flow. The remaining schema addition is a `centroid_embedding` column on `topics`, plus an optional `match_topic` SQL helper.
 
 The recommended approach is **LLM-guided centroid matching** rather than a library like BERTopic or HDBSCAN. This is appropriate because: (a) the corpus is personal-scale (hundreds to low thousands of articles, not millions), (b) HDBSCAN does not support incremental document addition without full re-clustering, (c) the project already has an LLM provider abstraction ready to use, and (d) simplicity is a declared constraint ("learning coder").
 
-**Primary recommendation:** At sync time, for each new article compute its source-level embedding (average of its chunk embeddings), compare against stored topic centroids, assign to the best-matching topic if similarity >= 0.65, otherwise create a new topic via LLM naming. After any assignment, regenerate the topic summary via LLM. Temporal queries are answered by filtering on `sources.published_at` in existing or new SQL functions.
+**Primary recommendation:** At sync time, for each new article reuse the stored `sources.source_embedding`, compare against stored topic centroids, assign to the best-matching topic if similarity >= 0.65, otherwise create a new topic via LLM naming. Older rows that still lack `source_embedding` should be handled by an explicit backfill or repair path, not by silently drifting back to stale plan assumptions. After any assignment, regenerate the topic summary via LLM. Temporal queries are answered by filtering on `sources.published_at` in existing or new SQL functions.
 
 ---
 
@@ -67,7 +67,7 @@ numpy is likely already a transitive dependency of supabase/httpx chain; verify 
 ```
 backend/second_brain/
 ├── ingestion/
-│   ├── readwise.py          # existing — no changes
+│   ├── readwise.py          # existing — now also writes source_embedding during ingestion
 │   ├── chunker.py           # existing — no changes
 │   └── clustering.py        # NEW — topic assignment logic
 ├── retrieval/
@@ -79,31 +79,22 @@ backend/second_brain/
     └── router.py            # may expose GET /api/topics endpoint for Phase 4 use
 ```
 
-### Pattern 1: Source-Level Embedding via Chunk Average
-**What:** Represent an entire article by the mean of its chunk embeddings. This is the standard centroid approach used in semantic clustering.
-**When to use:** At sync time, after chunks are stored and embedded.
+### Pattern 1: Reuse Stored Source-Level Embeddings
+**What:** Read the article-level vector already stored on `sources.source_embedding`. This is the current ingestion reality and should be the Phase 3 source of truth.
+**When to use:** At topic-assignment time, after fetching the source row.
 **Example:**
 ```python
-# Source: standard numpy practice; verified via machinelearningplus.com and numpy docs
-import numpy as np
-
 def get_source_embedding(source_id: str, db) -> list[float] | None:
-    """Average chunk embeddings to produce a single source-level vector."""
+    """Return the stored whole-source embedding, if present."""
     rows = (
-        db.table("chunks")
-        .select("embedding")
-        .eq("source_id", source_id)
+        db.table("sources")
+        .select("source_embedding")
+        .eq("id", source_id)
         .execute()
     ).data
     if not rows:
         return None
-    vectors = np.array([r["embedding"] for r in rows], dtype=np.float32)
-    mean_vec = vectors.mean(axis=0)
-    # Normalize to unit vector for cosine similarity via dot product
-    norm = np.linalg.norm(mean_vec)
-    if norm == 0:
-        return None
-    return (mean_vec / norm).tolist()
+    return rows[0].get("source_embedding")
 ```
 
 ### Pattern 2: Cosine Similarity Against Topic Centroids
@@ -218,20 +209,18 @@ def update_topic_centroid(topic_id: str, db) -> None:
     """
     Recompute and persist the topic centroid embedding.
     Uses AVG of all source embeddings that belong to the topic.
-    source_embeddings are pre-computed (stored on sources table, not chunks).
-
-    NOTE: This requires a `embedding` column on `sources` (added in Wave 1 of this phase).
+    source_embeddings are pre-computed and stored on `sources.source_embedding`.
     """
     rows = (
         db.table("source_topics")
-        .select("sources(embedding)")
+        .select("sources(source_embedding)")
         .eq("topic_id", topic_id)
         .execute()
     ).data
     vectors = [
-        np.array(r["sources"]["embedding"], dtype=np.float32)
+        np.array(r["sources"]["source_embedding"], dtype=np.float32)
         for r in rows
-        if r.get("sources") and r["sources"].get("embedding")
+        if r.get("sources") and r["sources"].get("source_embedding")
     ]
     if not vectors:
         return
@@ -272,7 +261,7 @@ def get_topic_sources_by_date(
 ### Anti-Patterns to Avoid
 
 - **Running full HDBSCAN re-cluster on every sync:** Produces unstable topic IDs (topics shift meaning) and discards all prior `source_topics` assignments. Never do this for an incremental system.
-- **Storing embeddings only on chunks, not sources:** Forces expensive multi-row aggregation on every centroid comparison. Add a `sources.embedding` column (source-level average) in Wave 1.
+- **Inventing a new `sources.embedding` column or recomputing chunk averages because of stale plan text:** The current ingestion path already persists whole-source vectors on `sources.source_embedding`. Reuse that column, and treat missing historical values as a repair/backfill concern.
 - **Calling the LLM to name a topic for every article:** Only call the LLM when no existing topic clears the threshold. Existing-topic assignment is purely vector math and costs zero LLM tokens.
 - **Regenerating all topic summaries after every sync:** Only regenerate topics that received new members in the current sync batch.
 - **Using pgvector `<=>` cosine DISTANCE as cosine SIMILARITY without correction:** `<=>` returns distance (0 = identical). Similarity = 1 - distance. The codebase already has this pattern in `hybrid_search` (`1 - (c.embedding <=> query_embedding)`).
@@ -281,25 +270,16 @@ def get_topic_sources_by_date(
 
 ## Schema Changes Required
 
-The existing schema has `topics` and `source_topics` but lacks two columns needed for Phase 3:
+The existing schema already has `sources.source_embedding` for whole-source vectors. Phase 3 should validate and reuse that column, not add a second source embedding field.
 
-### Addition 1: `sources.embedding` (source-level vector)
-```sql
--- Add to schema.sql (Phase 3 additions section)
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS embedding vector(1536);
-CREATE INDEX IF NOT EXISTS sources_embedding_idx
-  ON sources USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
-```
-This stores the pre-computed average of the source's chunk embeddings. Avoids re-aggregating chunks every time centroid math runs.
-
-### Addition 2: `topics.centroid_embedding`
+### Addition 1: `topics.centroid_embedding`
 ```sql
 -- Add to schema.sql (Phase 3 additions section)
 ALTER TABLE topics ADD COLUMN IF NOT EXISTS centroid_embedding vector(1536);
 ```
 Stores the running centroid of all member source embeddings. Updated after each assignment.
 
-### Addition 3: SQL helper function `match_topic`
+### Addition 2: SQL helper function `match_topic`
 ```sql
 -- Optional but clean: find best-matching topic for a given embedding
 CREATE OR REPLACE FUNCTION match_topic(
@@ -450,10 +430,10 @@ if response.data:
    - What's unclear: Optimal threshold depends on the embedding model; text-embedding-3-small (1536-dim) tends to produce higher cosine similarities than shorter models
    - Recommendation: Start at 0.65, log similarity scores during first sync, adjust if topics are too coarse (raise to 0.70) or too fragmented (lower to 0.60)
 
-2. **Should `sources.embedding` be stored, or computed on demand?**
-   - What we know: Computing source embedding on demand requires re-aggregating all chunks on every topic comparison; storing it as a column is O(1) per lookup
-   - What's unclear: Storage cost (1536 floats * 4 bytes = ~6KB per source; fine for thousands of articles)
-   - Recommendation: Store in `sources.embedding` column. Add as Phase 3 schema addition.
+2. **How should Phase 3 handle rows where `sources.source_embedding` is still NULL?**
+   - What we know: New inserts already store `sources.source_embedding`, and Phase 3 should use that existing column as its source-level vector
+   - What's unclear: Whether the remaining older NULL rows need a backfill before clustering is enabled across the whole corpus
+   - Recommendation: Treat NULL coverage as an explicit repair/backfill decision. Do not reintroduce a second `sources.embedding` field or switch the design back to chunk-averaging because older plan text said so.
 
 3. **Topics API endpoint for Phase 4**
    - What we know: Phase 4 (Synthesis) will need to query topics to build synthesis context
@@ -525,7 +505,7 @@ if response.data:
 
 **Confidence breakdown:**
 - Standard stack: HIGH — no new dependencies needed beyond numpy; all LLM/DB patterns already in codebase
-- Schema changes: HIGH — confirmed via direct schema.sql read; additions are minimal (2 columns + 1 SQL function)
+- Schema changes: HIGH — confirmed via direct schema.sql read; `sources.source_embedding` already exists, so the remaining additions are minimal (`topics.centroid_embedding` + optional `match_topic`)
 - Architecture: HIGH — centroid-threshold approach is well-understood; patterns verified against project conventions
 - HDBSCAN unsuitability: HIGH — confirmed by BERTopic official docs and arxiv paper that incremental update is not supported
 - Similarity threshold (0.65): MEDIUM — reasonable starting point verified against Supabase docs range; must be tuned per corpus

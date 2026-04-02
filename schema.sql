@@ -20,7 +20,8 @@ CREATE TABLE sources (
   published_at TIMESTAMPTZ,
   ingested_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  raw_text     TEXT                                  -- full article text for full-text search
+  raw_text     TEXT,                                 -- full article text for full-text search
+  source_embedding vector(1536)                      -- one whole-source vector for topic work
 );
 
 -- =============================================================================
@@ -31,6 +32,7 @@ CREATE TABLE topics (
   id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name       TEXT        NOT NULL,
   summary    TEXT,
+  centroid_embedding vector(1536),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -133,6 +135,10 @@ RETURNS TABLE (
 )
 LANGUAGE sql STABLE
 AS $$
+  -- Full-scan hybrid search: exact computation across all chunks.
+  -- The corpus is small (~6K chunks), so a full scan is fast (<1s) and has
+  -- perfect recall. The ivfflat index is intentionally bypassed here — its
+  -- approximate search with probes=1 was missing relevant results.
   SELECT
     c.id                                                          AS chunk_id,
     c.source_id,
@@ -165,6 +171,12 @@ $$;
 
 -- Add embedding column to messages for semantic search over past conversations
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS embedding vector(1536);
+
+-- Add source-level embedding storage for Phase 3 topic preparation
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS source_embedding vector(1536);
+
+-- Add topic centroid storage for Phase 3 incremental topic matching
+ALTER TABLE topics ADD COLUMN IF NOT EXISTS centroid_embedding vector(1536);
 
 -- IVFFlat index for semantic search over message embeddings
 CREATE INDEX IF NOT EXISTS messages_embedding_idx
@@ -200,5 +212,29 @@ AS $$
     AND m.embedding IS NOT NULL
     AND m.conversation_id != exclude_conversation_id
   ORDER BY m.embedding <=> query_embedding
+  LIMIT match_count;
+$$;
+
+-- match_topic: find the best matching topic centroid for a source embedding
+CREATE OR REPLACE FUNCTION match_topic(
+  query_embedding vector(1536),
+  match_threshold float DEFAULT 0.65,
+  match_count int DEFAULT 1
+)
+RETURNS TABLE (
+  topic_id uuid,
+  topic_name text,
+  similarity float
+)
+LANGUAGE sql STABLE
+AS $$
+  SELECT
+    id AS topic_id,
+    name AS topic_name,
+    1 - (centroid_embedding <=> query_embedding) AS similarity
+  FROM topics
+  WHERE centroid_embedding IS NOT NULL
+    AND 1 - (centroid_embedding <=> query_embedding) >= match_threshold
+  ORDER BY centroid_embedding <=> query_embedding
   LIMIT match_count;
 $$;

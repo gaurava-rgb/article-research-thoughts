@@ -80,23 +80,17 @@ def build_messages_for_llm(
     system_prompt: str,
     history: list[dict],
     user_message: str,
-    memory_context: str,
 ) -> list[dict]:
     """Build the messages list for the LLM API call.
 
-    Injects memory context into the system prompt, caps history at last 10
-    messages to avoid context window overflow (see Research pitfall 6), then
+    Caps history at last 10 messages to avoid context window overflow, then
     appends the new user message.
     """
-    full_system = system_prompt
-    if memory_context:
-        full_system = f"{system_prompt}\n\n{memory_context}"
-
     # Cap at last 10 messages (20 turns) to stay within context window
     recent_history = history[-10:]
 
     return [
-        {"role": "system", "content": full_system},
+        {"role": "system", "content": system_prompt},
         *recent_history,
         {"role": "user", "content": user_message},
     ]
