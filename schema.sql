@@ -344,6 +344,8 @@ CREATE TABLE insights (
 -- knowledge base. Adjust the 0.7 / 0.3 constants below if you want more keyword
 -- influence (e.g. 0.5 / 0.5 for equal weighting).
 -- =============================================================================
+DROP FUNCTION IF EXISTS hybrid_search(vector, text, integer, date, date);
+
 CREATE OR REPLACE FUNCTION hybrid_search(
   query_embedding   vector(1536),
   query_text        text,

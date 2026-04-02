@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS processing_runs (
 CREATE INDEX IF NOT EXISTS processing_runs_run_type_idx
   ON processing_runs (run_type, started_at DESC);
 
+DROP FUNCTION IF EXISTS hybrid_search(vector, text, integer, date, date);
+
 CREATE OR REPLACE FUNCTION hybrid_search(
   query_embedding   vector(1536),
   query_text        text,
