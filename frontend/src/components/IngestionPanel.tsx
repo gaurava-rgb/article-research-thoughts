@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { generateDigest } from "@/lib/api";
+import { generateDigest, generateSuggestions } from "@/lib/api";
 
 type SyncState = "idle" | "running" | "complete" | "warning" | "error";
 type DigestState = "idle" | "running" | "complete" | "no_articles" | "error";
+type SuggestionState = "idle" | "running" | "complete" | "no_suggestions" | "error";
 
 export function IngestionPanel() {
   const [open, setOpen] = useState(false);
@@ -16,6 +17,8 @@ export function IngestionPanel() {
   const [urlMessage, setUrlMessage] = useState("");
   const [digestState, setDigestState] = useState<DigestState>("idle");
   const [digestMessage, setDigestMessage] = useState("");
+  const [suggestionState, setSuggestionState] = useState<SuggestionState>("idle");
+  const [suggestionMessage, setSuggestionMessage] = useState("");
 
   async function handleSync() {
     setSyncState("running");
@@ -62,10 +65,30 @@ export function IngestionPanel() {
       } else {
         setDigestState("complete");
         setDigestMessage("Digest generated! Open Insights in the sidebar to read it.");
+        window.dispatchEvent(new Event("insights:refresh"));
       }
     } catch {
       setDigestState("error");
       setDigestMessage("Failed to generate digest. Is the backend running?");
+    }
+  }
+
+  async function handleGenerateSuggestions() {
+    setSuggestionState("running");
+    setSuggestionMessage("Scanning the corpus for coverage gaps and follow-ups…");
+    try {
+      const data = await generateSuggestions();
+      if (data.status === "no_suggestions") {
+        setSuggestionState("no_suggestions");
+        setSuggestionMessage("No new suggestions were generated from the current corpus.");
+      } else {
+        setSuggestionState("complete");
+        setSuggestionMessage("Suggestions generated. Open Insights in the sidebar to review them.");
+        window.dispatchEvent(new Event("insights:refresh"));
+      }
+    } catch {
+      setSuggestionState("error");
+      setSuggestionMessage("Failed to generate suggestions. Is the backend running?");
     }
   }
 
@@ -152,6 +175,36 @@ export function IngestionPanel() {
                 }`}
               >
                 {digestMessage}
+              </p>
+            )}
+          </div>
+
+          <Separator />
+
+          <div>
+            <p className="mb-1 text-xs font-semibold text-muted-foreground">Research Follow-ups</p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Suggests coverage gaps, counterpoints, follow-ups, and watch items from your analyzed corpus.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleGenerateSuggestions}
+              disabled={suggestionState === "running"}
+            >
+              {suggestionState === "running" ? "Generating…" : "Generate Suggestions"}
+            </Button>
+            {suggestionMessage && (
+              <p
+                className={`mt-1 text-xs ${
+                  suggestionState === "error"
+                    ? "text-red-600"
+                    : suggestionState === "complete"
+                      ? "text-green-600"
+                      : "text-muted-foreground"
+                }`}
+              >
+                {suggestionMessage}
               </p>
             )}
           </div>

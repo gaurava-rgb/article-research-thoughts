@@ -1,4 +1,4 @@
-"""Tests for Phase 5 insights endpoints (WORK-01, WORK-02, WORK-03, UI-06)."""
+"""Tests for insights and Phase 4 suggestion endpoints."""
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -107,6 +107,68 @@ def test_generate_digest_creates_insight():
     data = response.json()
     assert data["status"] == "ok"
     assert data["insight"]["id"] == "ins-new"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/insights/generate-suggestions
+# ---------------------------------------------------------------------------
+
+def test_generate_suggestions_no_results():
+    """POST /api/insights/generate-suggestions returns no_suggestions when empty."""
+    from api.index import app
+    from fastapi.testclient import TestClient
+
+    with (
+        patch("second_brain.db.get_db_client"),
+        patch(
+            "second_brain.ingestion.insights.generate_suggestions",
+            return_value=[],
+        ),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.post("/api/insights/generate-suggestions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_suggestions"
+    assert payload["insights"] == []
+
+
+def test_generate_suggestions_returns_created_rows():
+    """POST /api/insights/generate-suggestions returns new suggestions."""
+    from api.index import app
+    from fastapi.testclient import TestClient
+
+    fake_rows = [
+        {
+            "id": "ins-s1",
+            "type": "coverage_gap",
+            "title": "Find a primary source for OpenClaw",
+            "body": "OpenClaw has recent coverage but no primary source.",
+            "summary": "No primary source yet",
+            "status": "active",
+            "seen": False,
+            "created_at": "2026-04-02T12:00:00",
+            "metadata": {"query": "OpenClaw investor relations"},
+            "entities": [],
+            "claims": [],
+        }
+    ]
+
+    with (
+        patch("second_brain.db.get_db_client"),
+        patch(
+            "second_brain.ingestion.insights.generate_suggestions",
+            return_value=fake_rows,
+        ),
+    ):
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.post("/api/insights/generate-suggestions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["insights"][0]["type"] == "coverage_gap"
 
 
 # ---------------------------------------------------------------------------

@@ -283,10 +283,10 @@ def list_topics_endpoint():
 
 @router.get("/insights")
 def list_insights_endpoint():
-    """Return all insights ordered newest-first, plus the unseen count.
+    """Return all active insights ordered newest-first, plus the unseen count.
 
     Response shape:
-      { "insights": [{id, type, title, body, seen, created_at}, ...],
+      { "insights": [{id, type, title, body, seen, created_at, ...}, ...],
         "unseen_count": int }
     """
     from second_brain.db import get_db_client
@@ -328,6 +328,30 @@ async def generate_digest_endpoint():
     if result is None:
         return {"status": "no_articles", "message": "No articles ingested in the last 7 days."}
     return {"status": "ok", "insight": result}
+
+
+@router.post("/insights/generate-suggestions")
+async def generate_suggestions_endpoint():
+    """Generate Phase 4 coverage-gap and follow-up suggestions."""
+    import asyncio
+
+    def _run():
+        from second_brain.db import get_db_client
+        from second_brain.ingestion.insights import generate_suggestions
+
+        db = get_db_client()
+        return generate_suggestions(db)
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _run)
+
+    if not result:
+        return {
+            "status": "no_suggestions",
+            "message": "No new suggestions were generated from the current corpus.",
+            "insights": [],
+        }
+    return {"status": "ok", "insights": result}
 
 
 @router.get("/conversations/similar")

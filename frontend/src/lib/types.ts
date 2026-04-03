@@ -233,11 +233,44 @@ export interface Conversation {
   updatedAt: string;
 }
 
+export type InsightType =
+  | "pattern"
+  | "contradiction"
+  | "digest"
+  | "coverage_gap"
+  | "counterpoint"
+  | "follow_up"
+  | "watch";
+
+export interface InsightEntityRef {
+  id: string;
+  canonicalName: string;
+  entityType: string;
+  ticker: string | null;
+  role: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface InsightClaimRef {
+  id: string;
+  claimText: string;
+  claimType: string;
+  importance: number | null;
+  confidence: number | null;
+  role: string | null;
+  subjectEntityName: string | null;
+}
+
 export interface Insight {
   id: string;
-  type: "pattern" | "contradiction" | "digest";
+  type: InsightType;
   title: string;
   body: string;
+  summary?: string | null;
+  status?: string;
+  metadata: Record<string, unknown>;
+  entities: InsightEntityRef[];
+  claims: InsightClaimRef[];
   seen: boolean;
   createdAt: string;
 }

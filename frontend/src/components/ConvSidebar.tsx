@@ -26,6 +26,15 @@ export function ConvSidebar({ currentConversationId }: ConvSidebarProps) {
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
 
+  const loadInsights = () => {
+    fetchInsights()
+      .then((data) => {
+        setInsights(data.insights);
+        setUnseenCount(data.unseen_count);
+      })
+      .catch(() => {});
+  };
+
   useEffect(() => {
     fetchConversations()
       .then(setConversations)
@@ -33,12 +42,10 @@ export function ConvSidebar({ currentConversationId }: ConvSidebarProps) {
   }, []);
 
   useEffect(() => {
-    fetchInsights()
-      .then((data) => {
-        setInsights(data.insights);
-        setUnseenCount(data.unseen_count);
-      })
-      .catch(() => {});
+    loadInsights();
+    const handler = () => loadInsights();
+    window.addEventListener("insights:refresh", handler);
+    return () => window.removeEventListener("insights:refresh", handler);
   }, []);
 
   async function handleInsightClick(insight: Insight) {
@@ -57,6 +64,40 @@ export function ConvSidebar({ currentConversationId }: ConvSidebarProps) {
       } catch {
         // non-critical
       }
+    }
+  }
+
+  function renderInsightTypeLabel(type: Insight["type"]): string {
+    switch (type) {
+      case "coverage_gap":
+        return "Coverage gap";
+      case "counterpoint":
+        return "Counterpoint";
+      case "follow_up":
+        return "Follow-up";
+      case "watch":
+        return "Watch";
+      case "contradiction":
+        return "Contradiction";
+      case "pattern":
+        return "Pattern";
+      default:
+        return "Digest";
+    }
+  }
+
+  function renderInsightTypeClass(type: Insight["type"]): string {
+    switch (type) {
+      case "coverage_gap":
+        return "border-amber-300/30 bg-amber-500/10 text-amber-100";
+      case "counterpoint":
+        return "border-rose-300/30 bg-rose-500/10 text-rose-100";
+      case "follow_up":
+        return "border-sky-300/30 bg-sky-500/10 text-sky-100";
+      case "watch":
+        return "border-emerald-300/30 bg-emerald-500/10 text-emerald-100";
+      default:
+        return "border-white/10 bg-white/5 text-muted-foreground";
     }
   }
 
@@ -107,7 +148,7 @@ export function ConvSidebar({ currentConversationId }: ConvSidebarProps) {
             <div className="mt-1 space-y-1 pb-1">
               {insights.length === 0 ? (
                 <p className="px-3 py-3 text-xs text-muted-foreground">
-                  No insights yet. Generate a weekly digest from the Add Sources panel.
+                  No insights yet. Generate a digest or research follow-ups from the Add Sources panel.
                 </p>
               ) : (
                 insights.map((insight) => (
@@ -139,9 +180,46 @@ export function ConvSidebar({ currentConversationId }: ConvSidebarProps) {
                     </button>
                     {expandedInsight === insight.id && (
                       <div className="mx-2 mb-2 rounded-md border bg-muted/40 p-3">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${renderInsightTypeClass(insight.type)}`}>
+                            {renderInsightTypeLabel(insight.type)}
+                          </span>
+                          {insight.entities.slice(0, 2).map((entity) => (
+                            <span
+                              key={entity.id}
+                              className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-muted-foreground"
+                            >
+                              {entity.canonicalName}
+                            </span>
+                          ))}
+                        </div>
+                        {insight.summary && (
+                          <p className="mb-2 text-xs font-medium text-foreground">
+                            {insight.summary}
+                          </p>
+                        )}
                         <p className="whitespace-pre-wrap text-xs text-foreground leading-relaxed">
                           {insight.body}
                         </p>
+                        {typeof insight.metadata.reason === "string" && (
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Why shown: {insight.metadata.reason}
+                          </p>
+                        )}
+                        {typeof insight.metadata.query === "string" && (
+                          <p className="mt-2 rounded-md border border-dashed border-white/10 bg-background/60 px-2 py-1 text-[11px] text-muted-foreground">
+                            Suggested query: <span className="text-foreground">{insight.metadata.query}</span>
+                          </p>
+                        )}
+                        {insight.claims.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {insight.claims.slice(0, 2).map((claim) => (
+                              <p key={claim.id} className="text-[11px] text-muted-foreground">
+                                Trigger: {claim.claimText}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

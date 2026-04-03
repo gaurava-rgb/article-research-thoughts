@@ -66,6 +66,26 @@ export async function fetchInsights(): Promise<{ insights: Insight[]; unseen_cou
       type: i.type as Insight["type"],
       title: i.title as string,
       body: i.body as string,
+      summary: (i.summary as string | null | undefined) ?? null,
+      status: (i.status as string | undefined) ?? "active",
+      metadata: (i.metadata as Record<string, unknown> | undefined) ?? {},
+      entities: ((i.entities as Array<Record<string, unknown>> | undefined) ?? []).map((entity) => ({
+        id: entity.id as string,
+        canonicalName: entity.canonical_name as string,
+        entityType: entity.entity_type as string,
+        ticker: (entity.ticker as string | null | undefined) ?? null,
+        role: (entity.role as string | null | undefined) ?? null,
+        metadata: (entity.metadata as Record<string, unknown> | undefined) ?? {},
+      })),
+      claims: ((i.claims as Array<Record<string, unknown>> | undefined) ?? []).map((claim) => ({
+        id: claim.id as string,
+        claimText: claim.claim_text as string,
+        claimType: claim.claim_type as string,
+        importance: (claim.importance as number | null | undefined) ?? null,
+        confidence: (claim.confidence as number | null | undefined) ?? null,
+        role: (claim.role as string | null | undefined) ?? null,
+        subjectEntityName: (claim.subject_entity_name as string | null | undefined) ?? null,
+      })),
       seen: i.seen as boolean,
       createdAt: i.created_at as string,
     })),
@@ -82,6 +102,44 @@ export async function generateDigest(): Promise<{ status: string; message?: stri
   const res = await fetch(`${BASE}/api/insights/generate-digest`, { method: "POST" });
   if (!res.ok) throw new Error(`Failed to generate digest: ${res.status}`);
   return res.json() as Promise<{ status: string; message?: string; insight?: Insight }>;
+}
+
+export async function generateSuggestions(): Promise<{ status: string; message?: string; insights: Insight[] }> {
+  const res = await fetch(`${BASE}/api/insights/generate-suggestions`, { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to generate suggestions: ${res.status}`);
+  const data = await res.json() as { status: string; message?: string; insights?: Array<Record<string, unknown>> };
+  return {
+    status: data.status,
+    message: data.message,
+    insights: ((data.insights as Array<Record<string, unknown>> | undefined) ?? []).map((i) => ({
+      id: i.id as string,
+      type: i.type as Insight["type"],
+      title: i.title as string,
+      body: i.body as string,
+      summary: (i.summary as string | null | undefined) ?? null,
+      status: (i.status as string | undefined) ?? "active",
+      metadata: (i.metadata as Record<string, unknown> | undefined) ?? {},
+      entities: ((i.entities as Array<Record<string, unknown>> | undefined) ?? []).map((entity) => ({
+        id: entity.id as string,
+        canonicalName: entity.canonical_name as string,
+        entityType: entity.entity_type as string,
+        ticker: (entity.ticker as string | null | undefined) ?? null,
+        role: (entity.role as string | null | undefined) ?? null,
+        metadata: (entity.metadata as Record<string, unknown> | undefined) ?? {},
+      })),
+      claims: ((i.claims as Array<Record<string, unknown>> | undefined) ?? []).map((claim) => ({
+        id: claim.id as string,
+        claimText: claim.claim_text as string,
+        claimType: claim.claim_type as string,
+        importance: (claim.importance as number | null | undefined) ?? null,
+        confidence: (claim.confidence as number | null | undefined) ?? null,
+        role: (claim.role as string | null | undefined) ?? null,
+        subjectEntityName: (claim.subject_entity_name as string | null | undefined) ?? null,
+      })),
+      seen: i.seen as boolean,
+      createdAt: i.created_at as string,
+    })),
+  };
 }
 
 export async function fetchSimilarConversations(

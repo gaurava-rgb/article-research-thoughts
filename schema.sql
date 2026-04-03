@@ -345,17 +345,50 @@ CREATE TABLE messages (
 );
 
 -- =============================================================================
--- 9. insights: proactively detected patterns, contradictions, weekly digests
---    Populated in Phase 5 — Proactive Insights. 'seen' tracks if user has viewed it.
+-- 9. insights: digests plus Phase 4/5 analyst-facing suggestions and synthesis
+--    'seen' tracks if user has viewed it. 'status' allows regeneration without
+--    losing history. Linked entities / claims provide explainable provenance.
 -- =============================================================================
 CREATE TABLE insights (
-  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  type       TEXT        NOT NULL,              -- 'pattern', 'contradiction', 'digest'
-  title      TEXT        NOT NULL,
-  body       TEXT        NOT NULL,
-  seen       BOOLEAN     NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  type              TEXT        NOT NULL,   -- 'digest', 'coverage_gap', 'counterpoint', 'follow_up', 'watch', ...
+  title             TEXT        NOT NULL,
+  body              TEXT        NOT NULL,
+  seen              BOOLEAN     NOT NULL DEFAULT false,
+  status            TEXT        NOT NULL DEFAULT 'active',
+  summary           TEXT,
+  metadata          JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  processing_run_id UUID        REFERENCES processing_runs(id) ON DELETE SET NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX insights_type_created_at_idx
+  ON insights (type, created_at DESC);
+
+CREATE INDEX insights_status_idx
+  ON insights (status);
+
+CREATE TABLE insight_claims (
+  insight_id   UUID NOT NULL REFERENCES insights(id) ON DELETE CASCADE,
+  claim_id     UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL DEFAULT 'support',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (insight_id, claim_id)
+);
+
+CREATE INDEX insight_claims_claim_id_idx
+  ON insight_claims (claim_id);
+
+CREATE TABLE insight_entities (
+  insight_id   UUID NOT NULL REFERENCES insights(id) ON DELETE CASCADE,
+  entity_id    UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL DEFAULT 'subject',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (insight_id, entity_id)
+);
+
+CREATE INDEX insight_entities_entity_id_idx
+  ON insight_entities (entity_id);
 
 -- =============================================================================
 -- Hybrid search function: combines pgvector cosine similarity with PostgreSQL FTS
