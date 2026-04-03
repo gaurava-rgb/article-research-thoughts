@@ -16,6 +16,14 @@
       "dest": "/api/index.py"
     },
     {
+      "src": "/entities/([^/]+)",
+      "dest": "/frontend/entities/[id]?id=$1"
+    },
+    {
+      "src": "/chat/([^/]+)",
+      "dest": "/frontend/chat/[id]?id=$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "/frontend/$1"
     }
