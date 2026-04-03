@@ -1,6 +1,7 @@
 fastapi
 supabase
 openai
+python-dotenv
 pyyaml
 tiktoken
 httpx

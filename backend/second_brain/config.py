@@ -26,8 +26,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
 import yaml
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - safe fallback for serverless envs using platform vars
+    def load_dotenv(*_args, **_kwargs) -> bool:
+        return False
 
 # Load .env from the project root (walk up from this file to find it)
 _env_path = Path(__file__).resolve().parents[2] / ".env"

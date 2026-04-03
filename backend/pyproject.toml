@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "supabase",           # Supabase Python client (database + auth)
     "openai",             # OpenAI-compatible client; works with OpenRouter
+    "python-dotenv",      # Load local .env files when running outside managed hosting
     "pyyaml",             # Parse config.yaml
     "tiktoken",           # Count tokens for chunking
     "httpx",              # Async HTTP client (used by supabase and for Readwise API)
