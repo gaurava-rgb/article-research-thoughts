@@ -1,0 +1,41 @@
+.git
+.git/**
+.DS_Store
+.env
+.claude
+.planning
+.planning/**
+.ocr
+.ocr/**
+.ocr2
+.ocr2/**
+.ocrimg
+.ocrimg/**
+.ocrtxt
+.ocrtxt/**
+stratechery
+stratechery/**
+antig thoughts
+antig thoughts/**
+CURSORPLAN.md
+humanAPR1intervention.md
+rag v brain.md
+screenshot.png
+trust.txt
+try2.md
+docs
+docs/**
+migrations
+migrations/**
+frontend/node_modules
+frontend/node_modules/**
+frontend/.next
+frontend/.next/**
+frontend/.env.local
+frontend/tsconfig.tsbuildinfo
+backend/.venv
+backend/.venv/**
+backend/.pytest_cache
+backend/.pytest_cache/**
+backend/tests
+backend/tests/**
